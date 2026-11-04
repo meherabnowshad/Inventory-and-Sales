@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - Sprint-1
   pull_request:
     branches:
       - main
@@ -60,7 +61,7 @@ jobs:
         run: npm run prisma:generate --workspace=backend
 
       - name: Lint Backend Code
-        run: npm run lint:backend || npm run lint --workspace=backend
+        run: npm run lint --workspace=backend
 
       - name: Compile Backend TypeScript
         run: npm run build:backend
@@ -83,6 +84,9 @@ jobs:
 
       - name: Lint Frontend Code
         run: npm run lint --workspace=frontend
+
+      - name: Test Frontend
+        run: npm run test:frontend
 
       - name: Build Frontend Application
         run: npm run build:frontend
