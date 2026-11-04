@@ -1,0 +1,88 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format-and-secret-audit:
+    name: Code Formatting & Secret Audit (NFR-SEC-03, NFR-MNT-01)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Check Code Formatting (Prettier)
+        run: npm run format:check
+
+      - name: Secret Scan Verification
+        run: |
+          if git ls-files | grep -E "(^|/)\.env$"; then
+            echo "ERROR: Tracked .env file detected! NFR-SEC-03 violation."
+            exit 1
+          fi
+          echo "Secret scan passed: No committed .env files found."
+
+  backend-checks:
+    name: Backend Lint & Typecheck (NFR-MNT-01, NFR-OPS-01)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate --workspace=backend
+
+      - name: Lint Backend Code
+        run: npm run lint:backend || npm run lint --workspace=backend
+
+      - name: Compile Backend TypeScript
+        run: npm run build:backend
+
+  frontend-checks:
+    name: Frontend Lint & Build (NFR-MNT-01, NFR-OPS-01)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Lint Frontend Code
+        run: npm run lint --workspace=frontend
+
+      - name: Build Frontend Application
+        run: npm run build:frontend
