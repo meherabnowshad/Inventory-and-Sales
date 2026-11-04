@@ -1,8 +1,7 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { HelpCircle, Home } from 'lucide-react';
 
-export const NotFoundPage: React.FC = () => {
+export function NotFoundPage() {
   return (
     <div className="text-center py-16">
       <div className="inline-flex p-4 rounded-full bg-slate-100 text-slate-500 mb-4">
@@ -23,4 +22,4 @@ export const NotFoundPage: React.FC = () => {
       </div>
     </div>
   );
-};
+}

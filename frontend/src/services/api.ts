@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+// Defaults to '/api' so Vite proxy in vite.config.ts forwards to http://localhost:5001/api without CORS
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -11,7 +12,7 @@ export const apiClient = axios.create({
 });
 
 export interface HealthResponse {
-  status: string;
+  status: 'UP' | 'DEGRADED';
   service: string;
   version: string;
   environment: string;
@@ -24,6 +25,9 @@ export interface HealthResponse {
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const response = await apiClient.get<HealthResponse>('/health');
+  // Accept both 200 (UP) and 503 (DEGRADED) so offline DB state is properly reported to the UI
+  const response = await apiClient.get<HealthResponse>('/health', {
+    validateStatus: (status) => status === 200 || status === 503,
+  });
   return response.data;
 }

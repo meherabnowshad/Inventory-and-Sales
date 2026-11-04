@@ -1,46 +1,39 @@
-import React, { useEffect, useState } from 'react';
 import { Package, TrendingUp, AlertTriangle, DollarSign, CheckCircle2 } from 'lucide-react';
-import { fetchHealth, HealthResponse } from '../services/api';
+import { useHealthStatus } from '../hooks/useHealthStatus';
 
-export const DashboardPage: React.FC = () => {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
+const MOCK_METRICS = [
+  {
+    title: 'Total Products (Mock)',
+    value: '1,280',
+    change: 'Sprint 1 placeholder dataset',
+    icon: Package,
+    color: 'bg-blue-500',
+  },
+  {
+    title: "Today's Sales (Mock)",
+    value: 'BDT 4,850.00',
+    change: 'Sprint 1 placeholder dataset',
+    icon: TrendingUp,
+    color: 'bg-emerald-500',
+  },
+  {
+    title: 'Low Stock Alerts (Mock)',
+    value: '7 Items',
+    change: 'Sprint 1 placeholder dataset',
+    icon: AlertTriangle,
+    color: 'bg-amber-500',
+  },
+  {
+    title: 'Total Revenue (Mock)',
+    value: 'BDT 94,320.00',
+    change: 'Sprint 1 placeholder dataset',
+    icon: DollarSign,
+    color: 'bg-indigo-500',
+  },
+];
 
-  useEffect(() => {
-    fetchHealth()
-      .then((data) => setHealth(data))
-      .catch(() => setHealth(null));
-  }, []);
-
-  const metrics = [
-    {
-      title: 'Total Products',
-      value: '1,280',
-      change: '+12% from last month',
-      icon: Package,
-      color: 'bg-blue-500',
-    },
-    {
-      title: "Today's Sales",
-      value: '$4,850.00',
-      change: '+8.4% today',
-      icon: TrendingUp,
-      color: 'bg-emerald-500',
-    },
-    {
-      title: 'Low Stock Alerts',
-      value: '7 Items',
-      change: 'Requires replenishment',
-      icon: AlertTriangle,
-      color: 'bg-amber-500',
-    },
-    {
-      title: 'Total Revenue',
-      value: '$94,320.00',
-      change: 'Sprint 1 baseline',
-      icon: DollarSign,
-      color: 'bg-indigo-500',
-    },
-  ];
+export function DashboardPage() {
+  const { health, loading, error } = useHealthStatus();
 
   return (
     <div className="space-y-6">
@@ -58,9 +51,9 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Metric Cards */}
+      {/* Metric Cards (Labeled as Mock Baseline) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {metrics.map((m) => {
+        {MOCK_METRICS.map((m) => {
           const Icon = m.icon;
           return (
             <div
@@ -76,7 +69,7 @@ export const DashboardPage: React.FC = () => {
                 </div>
               </div>
               <p className="text-2xl font-bold text-slate-900 mt-3">{m.value}</p>
-              <p className="text-xs text-slate-500 mt-1">{m.change}</p>
+              <p className="text-xs text-slate-400 mt-1">{m.change}</p>
             </div>
           );
         })}
@@ -117,9 +110,8 @@ export const DashboardPage: React.FC = () => {
                   Security &amp; Secret Isolation
                 </p>
                 <p className="text-xs text-slate-500">
-                  Environment variables configured via standardized{' '}
-                  <code className="bg-slate-200 px-1 rounded">.env.example</code> with secret
-                  masking, CORS allowlisting, and helmet security headers.
+                  Environment variables configured via Zod validated schemas, no committed secrets,
+                  CORS origin trimming, and helmet security headers.
                 </p>
               </div>
             </div>
@@ -133,8 +125,8 @@ export const DashboardPage: React.FC = () => {
                   Maintainability &amp; Code Quality
                 </p>
                 <p className="text-xs text-slate-500">
-                  Strict ESLint and Prettier rules with TypeScript strict mode, PR template
-                  enforcement, and CI branch protection.
+                  Strict ESLint and Prettier rules with TypeScript strict mode, Vitest unit &amp;
+                  integration tests, PR template enforcement, and CI branch protection.
                 </p>
               </div>
             </div>
@@ -148,11 +140,13 @@ export const DashboardPage: React.FC = () => {
             <p className="text-xs text-slate-500 mt-1">Live response from Express backend</p>
 
             <div className="mt-4 p-4 rounded-lg bg-slate-900 text-slate-100 text-xs font-mono overflow-auto max-h-52">
-              {health ? (
+              {loading ? (
+                <p className="text-slate-400">Connecting to /api/health...</p>
+              ) : health ? (
                 <pre>{JSON.stringify(health, null, 2)}</pre>
               ) : (
-                <p className="text-slate-400">
-                  Backend offline or connecting to http://localhost:5001/api/health...
+                <p className="text-amber-400">
+                  Backend offline or unreachable ({error || 'Network Error'}).
                 </p>
               )}
             </div>
@@ -165,4 +159,4 @@ export const DashboardPage: React.FC = () => {
       </div>
     </div>
   );
-};
+}

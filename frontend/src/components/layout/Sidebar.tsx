@@ -1,15 +1,14 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Boxes, ShoppingCart, LogIn, Layers, ExternalLink } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
-  const navItems = [
-    { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-    { label: 'Inventory', to: '/inventory', icon: Boxes },
-    { label: 'Sales & Orders', to: '/sales', icon: ShoppingCart },
-    { label: 'Authentication', to: '/login', icon: LogIn },
-  ];
+const NAV_ITEMS = [
+  { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+  { label: 'Inventory', to: '/inventory', icon: Boxes },
+  { label: 'Sales & Orders', to: '/sales', icon: ShoppingCart },
+  { label: 'Authentication', to: '/login', icon: LogIn },
+];
 
+export function Sidebar() {
   return (
     <aside className="w-64 bg-slate-900 text-slate-200 flex flex-col shrink-0 min-h-screen">
       {/* Brand Header */}
@@ -28,7 +27,7 @@ export const Sidebar: React.FC = () => {
         <p className="px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
           Navigation
         </p>
-        {navItems.map((item) => {
+        {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
             <NavLink
@@ -56,7 +55,7 @@ export const Sidebar: React.FC = () => {
           <p className="font-semibold text-slate-200 text-[11px]">System Status</p>
           <p className="text-[11px] text-slate-400 mt-0.5">Vite + React Router v6</p>
           <a
-            href="http://localhost:5001/api/health"
+            href="/api/health"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 mt-2 font-medium"
@@ -69,4 +68,4 @@ export const Sidebar: React.FC = () => {
       </div>
     </aside>
   );
-};
+}
