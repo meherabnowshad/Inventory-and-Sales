@@ -28,7 +28,7 @@ These apply to every table unless the table section says otherwise.
 | Text | Required text is trimmed and not empty: `CHECK (btrim(col) <> '')`. Names are at most 120 characters | Validation rules |
 | Phone | `CHAR(11)`, Bangladesh mobile format: `CHECK (phone ~ '^01[3-9][0-9]{8}$')` | Validation rules, DDL |
 | Case-insensitive unique | Unique index on `lower(col)`, not a plain `UNIQUE` | BR-12, FR-CAT-01 |
-| Audit columns | Every business table has `created_at`, `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT now()`) and `created_by` (`BIGINT NOT NULL → users.id`) | Section 5 |
+| Audit columns | Every business table has `created_at`, `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT now()`) and `created_by` (`BIGINT NOT NULL → users.id`). Line tables (`purchase_order_lines`, `sales_invoice_lines`, `sales_return_lines`) are only written together with their header, so they take who and when from the header, as in the DDL | Section 5 |
 | Deletion | No hard delete for anything that appears in history. Master data uses `is_active`; documents use a `CANCELLED` status | BR-14 |
 | Foreign keys | `ON DELETE RESTRICT` by default. `ON DELETE CASCADE` only from a document header to its own lines | DDL |
 | FK indexes | PostgreSQL does not index foreign keys automatically, so every FK used in a lookup gets an index | Performance (NFR-PERF-01) |
@@ -503,7 +503,7 @@ Run as `smartmart_app` against a seeded database. Each statement must fail.
 | # | Rule | Statement | Expected |
 |---|---|---|---|
 | 1 | BR-01 | `UPDATE products SET stock_qty = -1 WHERE sku = 'KB-K120';` | check violation `products_stock_qty_nonneg` |
-| 2 | BR-01 | `INSERT INTO stock_movements (…, stock_before, quantity, stock_after, …) VALUES (…, 2, -3, -1, …);` | check violation `stock_after >= 0` |
+| 2 | BR-01 | `INSERT INTO stock_movements (…, stock_before, quantity, stock_after, …) VALUES (…, 2, -3, -1, …);` | check violation `stock_movements_stock_after_check` |
 | 3 | BR-12 | `INSERT INTO products (sku, …) VALUES ('kb-k120', …);` when `KB-K120` exists | unique violation `products_sku_ci` |
 | 4 | BR-12 | `UPDATE products SET sku = 'KB-K121' WHERE sku = 'KB-K120';` after a movement exists | exception "SKU is locked" |
 | 5 | FR-INV-03 | `UPDATE stock_movements SET quantity = 5 WHERE id = 1;` | permission denied |
@@ -529,3 +529,18 @@ The main SRS section 5 and the engineering DDL v0.3 differ on these points. This
 | 7 | `payment_method` on confirm | Optional (FR-SAL-10 is *Should*) | Required by the confirm CHECK | |
 | 8 | SKU lock and append-only triggers | Proposed here | Not in the DDL (REVOKE only) | |
 | 9 | Phone format | "11 digits starting 01" | Regex `^01[3-9][0-9]{8}$` (stricter) | |
+| 10 | Audit columns on line tables | "Every business table" | Not on line tables | |
+
+---
+
+## 7. Verification
+
+All rules in this document were built on PostgreSQL 16.15 and tested on 2026-11-04 with the seed product KB-K120 (stock 50).
+
+| Result | Checks |
+|---|---|
+| All 14 tables created without errors | DDL |
+| 9 / 9 negative checks in section 5 rejected | BR-01, BR-09, BR-12, FR-INV-03, FR-AUD-01 |
+| 6 / 6 extra negative checks rejected | duplicate category (other case), second walk-in row, bad phone, DAMAGED with +1, delete category in use, price above 9,999,999.99 |
+| Owner role also blocked from `UPDATE`, `DELETE`, `TRUNCATE` on `stock_movements` and `audit_log` | append-only triggers |
+| Valid adjustment accepted; reconciliation query returns 0 rows; generated `line_total` = 3 × 950.00 = 2850.00 | positive checks |
