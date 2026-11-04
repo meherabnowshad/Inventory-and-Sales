@@ -391,12 +391,33 @@ CREATE INDEX movements_type_time    ON stock_movements (type, created_at DESC);
 CREATE INDEX movements_user_time    ON stock_movements (user_id, created_at DESC);     -- FR-INV-04
 ```
 
-| Type | Sign of `quantity` | `ref_type` | Written by |
-|---|---|---|---|
-| `RECEIPT` | + | `PURCHASE_ORDER` | PO receive (FR-PO-05) |
-| `SALE` | − | `SALES_INVOICE` | Invoice confirm (FR-SAL-05) |
-| `RETURN` | + | `SALES_RETURN` | Return of a `RESELLABLE` line only (BR-08) |
-| `ADJUSTMENT` | + or − by reason | `ADJUSTMENT` | Administrator adjustment (FR-INV-05) |
+| Type | Sign of `quantity` | `ref_type` | `ref_id` points to | Written by |
+|---|---|---|---|---|
+| `RECEIPT` | + | `PURCHASE_ORDER` | `purchase_orders.id` | PO receive (FR-PO-05) |
+| `SALE` | − | `SALES_INVOICE` | `sales_invoices.id` | Invoice confirm (FR-SAL-05) |
+| `RETURN` | + | `SALES_RETURN` | `sales_returns.id` | Return of a `RESELLABLE` line only (BR-08) |
+| `ADJUSTMENT` | + or − by reason | `ADJUSTMENT` | `audit_log.id` of the adjustment's audit row (proposed) | Administrator adjustment (FR-INV-05) |
+
+`ref_id` is a logical link with no foreign key, because it points to different tables. The stock service sets it.
+
+Adjustments have no table of their own, so the SRS does not say what `ref_id` holds for them. Proposed: the adjustment transaction writes its `audit_log` row first (FR-AUD-01 needs one anyway) and uses that row's `id` as `ref_id`. Then every adjustment movement links to its audit record:
+
+```sql
+BEGIN;
+SELECT stock_qty FROM products WHERE id = 1 FOR UPDATE;          -- 48
+WITH a AS (
+  INSERT INTO audit_log (entity, entity_id, action, before_json, after_json, user_id)
+  VALUES ('products', 1, 'ADJUSTMENT', '{"stock_qty":48}',
+          '{"stock_qty":47,"reason":"LOST","note":"missing at count"}', 1)
+  RETURNING id)
+INSERT INTO stock_movements (product_id, type, quantity, stock_before, stock_after,
+                             ref_type, ref_id, reason, note, user_id)
+SELECT 1, 'ADJUSTMENT', -1, 48, 47, 'ADJUSTMENT', a.id, 'LOST', 'missing at count', 1 FROM a;
+UPDATE products SET stock_qty = 47 WHERE id = 1;
+COMMIT;
+```
+
+Damaged returns write no movement (BR-08), because the item does not go back into stock.
 
 ### 3.3 Append-only rule
 
@@ -530,6 +551,7 @@ The main SRS section 5 and the engineering DDL v0.3 differ on these points. This
 | 8 | SKU lock and append-only triggers | Proposed here | Not in the DDL (REVOKE only) | |
 | 9 | Phone format | "11 digits starting 01" | Regex `^01[3-9][0-9]{8}$` (stricter) | |
 | 10 | Audit columns on line tables | "Every business table" | Not on line tables | |
+| 11 | `ref_id` for adjustments | Not defined | Not defined | Proposed: `audit_log.id` (section 3.2) |
 
 ---
 
@@ -544,3 +566,5 @@ All rules in this document were built on PostgreSQL 16.15 and tested on 2026-11-
 | 6 / 6 extra negative checks rejected | duplicate category (other case), second walk-in row, bad phone, DAMAGED with +1, delete category in use, price above 9,999,999.99 |
 | Owner role also blocked from `UPDATE`, `DELETE`, `TRUNCATE` on `stock_movements` and `audit_log` | append-only triggers |
 | Valid adjustment accepted; reconciliation query returns 0 rows; generated `line_total` = 3 × 950.00 = 2850.00 | positive checks |
+| Full adjustment transaction (section 3.2) as `smartmart_app`: stock 48 → 47, movement linked to its audit row, reconciliation 0 rows | FR-INV-03, FR-INV-05, FR-AUD-01 |
+| Transaction with an audit row followed by `stock_qty = -1`: rejected and fully rolled back (no audit row left, stock unchanged) | BR-01, NFR-REL-01 |
