@@ -1,11 +1,16 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthProvider } from '../context/AuthContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 import { NoAccessPage } from '../pages/NoAccessPage';
-import { TOKEN_STORAGE_KEY, USER_STORAGE_KEY, triggerUnauthorized } from '../services/api';
+import {
+  TOKEN_STORAGE_KEY,
+  USER_STORAGE_KEY,
+  triggerUnauthorized,
+  apiClient,
+} from '../services/api';
 import { AuthUser } from '../types/auth';
 
 const ADMIN_USER: AuthUser = {
@@ -35,6 +40,7 @@ const STORE_USER: AuthUser = {
 describe('IMS-06.2: Token Storage & 401 Handling', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.restoreAllMocks();
   });
 
   it('stores and restores auth session from localStorage', () => {
@@ -53,7 +59,7 @@ describe('IMS-06.2: Token Storage & 401 Handling', () => {
     expect(screen.getByText('Administrator')).toBeInTheDocument();
   });
 
-  it('clears stored session and redirects when 401 is triggered (FR-AUTH-03)', async () => {
+  it('clears stored session and redirects when 401 is triggered (FR-AUTH-03 / IMS-06.2 done-when)', async () => {
     localStorage.setItem(TOKEN_STORAGE_KEY, 'test_jwt_token_123');
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(ADMIN_USER));
 
@@ -72,7 +78,7 @@ describe('IMS-06.2: Token Storage & 401 Handling', () => {
 
     expect(screen.getByText('Dashboard Protected')).toBeInTheDocument();
 
-    // Trigger 401 unauthorized
+    // Trigger 401 unauthorized wrapped in act
     act(() => {
       triggerUnauthorized();
     });
@@ -81,11 +87,8 @@ describe('IMS-06.2: Token Storage & 401 Handling', () => {
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
 
-    // Acceptance criteria: Done when: A 401 sends the user to login
-    await waitFor(() => {
-      expect(screen.getByText('Login Page')).toBeInTheDocument();
-    });
-    expect(screen.queryByText('Dashboard Protected')).not.toBeInTheDocument();
+    // IMS-06.2 done-when: A 401 sends the user to login
+    expect(await screen.findByText('Login Page')).toBeInTheDocument();
   });
 });
 
@@ -191,6 +194,7 @@ describe('IMS-06.3: Role-Based Navigation & No-Access Screen (FR-AUTH-07)', () =
   });
 
   it('Sign Out button logs out user and removes session', async () => {
+    vi.spyOn(apiClient, 'post').mockResolvedValue({ data: {} });
     localStorage.setItem(TOKEN_STORAGE_KEY, 'sales_token');
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(SALES_USER));
 

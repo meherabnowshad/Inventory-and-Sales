@@ -18,6 +18,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.spyOn(api.apiClient, 'post').mockRejectedValue(new Error('Network offline in test'));
   });
 
   const renderLoginPage = () => {

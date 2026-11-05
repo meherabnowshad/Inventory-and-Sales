@@ -4,16 +4,12 @@ import {
   apiClient,
   TOKEN_STORAGE_KEY,
   USER_STORAGE_KEY,
-  triggerUnauthorized,
   onUnauthorized,
+  triggerUnauthorized,
+  logoutApi,
 } from '../services/api';
 
 describe('Frontend API Service (fetchHealth)', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.clearAllMocks();
-  });
-
   it('resolves with DEGRADED payload on HTTP 503 responses without throwing', async () => {
     const degradedPayload = {
       status: 'DEGRADED' as const,
@@ -69,20 +65,48 @@ describe('Frontend API Service (fetchHealth)', () => {
   });
 });
 
-describe('IMS-06.2: Authenticated API Client & Token Storage (FR-AUTH-03)', () => {
+describe('IMS-06.2: Token Storage & Authenticated API Client (FR-AUTH-03)', () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
-  it('triggerUnauthorized clears tokens from localStorage and calls listeners', () => {
-    localStorage.setItem(TOKEN_STORAGE_KEY, 'jwt_token_abc');
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ username: 'sadia' }));
+  it('attaches Bearer token in request headers when token is stored', () => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, 'bearer-jwt-token-xyz');
+
+    // Retrieve the registered request interceptor handler
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const requestHandler = (apiClient.interceptors.request as any).handlers[0]?.fulfilled;
+    expect(requestHandler).toBeDefined();
+
+    const config = requestHandler({ headers: {} });
+    expect(config.headers.Authorization).toBe('Bearer bearer-jwt-token-xyz');
+  });
+
+  it('does not attach Authorization header when no token is present', () => {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const requestHandler = (apiClient.interceptors.request as any).handlers[0]?.fulfilled;
+    expect(requestHandler).toBeDefined();
+
+    const config = requestHandler({ headers: {} });
+    expect(config.headers.Authorization).toBeUndefined();
+  });
+
+  it('triggers unauthorized cleanup and fires listener on 401 response', async () => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, 'stale-token');
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ name: 'Test User' }));
 
     const listener = vi.fn();
     const unsubscribe = onUnauthorized(listener);
 
-    triggerUnauthorized();
+    // Retrieve the registered response interceptor rejected handler
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const errorHandler = (apiClient.interceptors.response as any).handlers[0]?.rejected;
+    expect(errorHandler).toBeDefined();
+
+    await expect(errorHandler({ response: { status: 401 } })).rejects.toBeDefined();
 
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
@@ -91,39 +115,48 @@ describe('IMS-06.2: Authenticated API Client & Token Storage (FR-AUTH-03)', () =
     unsubscribe();
   });
 
-  it('unsubscribed listener is not called on triggerUnauthorized', () => {
+  it('does not clear session on non-401 errors (e.g. 500 or 404)', async () => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, 'valid-token');
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ name: 'Active User' }));
+
     const listener = vi.fn();
     const unsubscribe = onUnauthorized(listener);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const errorHandler = (apiClient.interceptors.response as any).handlers[0]?.rejected;
+    expect(errorHandler).toBeDefined();
+
+    await expect(errorHandler({ response: { status: 500 } })).rejects.toBeDefined();
+
+    expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('valid-token');
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+  });
+
+  it('allows unsubscribing from 401 notifications', () => {
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+
+    triggerUnauthorized();
+    expect(listener).toHaveBeenCalledTimes(1);
+
     unsubscribe();
     triggerUnauthorized();
-
-    expect(listener).not.toHaveBeenCalled();
+    // Should still only be 1 because listener unsubscribed
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('request interceptor attaches Bearer token if present in localStorage', async () => {
-    localStorage.setItem(TOKEN_STORAGE_KEY, 'my_bearer_token_123');
+  it('logoutApi calls /auth/logout and clears localStorage tokens', async () => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, 'token-to-logout');
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ id: 1 }));
 
-    // Run registered request interceptor
-    // Axios stores interceptor handlers
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (apiClient.interceptors.request as any).handlers;
-    const requestHandler = handlers[0]?.fulfilled;
+    const postSpy = vi.spyOn(apiClient, 'post').mockResolvedValueOnce({ data: {} });
 
-    if (requestHandler) {
-      const config = await requestHandler({ headers: {} });
-      expect(config.headers.Authorization).toBe('Bearer my_bearer_token_123');
-    }
-  });
+    await logoutApi();
 
-  it('request interceptor does not set Authorization header if no token is stored', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (apiClient.interceptors.request as any).handlers;
-    const requestHandler = handlers[0]?.fulfilled;
-
-    if (requestHandler) {
-      const config = await requestHandler({ headers: {} });
-      expect(config.headers.Authorization).toBeUndefined();
-    }
+    expect(postSpy).toHaveBeenCalledWith('/auth/logout');
+    expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
   });
 });
