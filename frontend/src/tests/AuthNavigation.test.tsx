@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AuthProvider } from '../context/AuthContext';
@@ -53,7 +53,7 @@ describe('IMS-06.2: Token Storage & 401 Handling', () => {
     expect(screen.getByText('Administrator')).toBeInTheDocument();
   });
 
-  it('clears stored session and redirects when 401 is triggered', () => {
+  it('clears stored session and redirects when 401 is triggered (FR-AUTH-03)', async () => {
     localStorage.setItem(TOKEN_STORAGE_KEY, 'test_jwt_token_123');
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(ADMIN_USER));
 
@@ -73,11 +73,19 @@ describe('IMS-06.2: Token Storage & 401 Handling', () => {
     expect(screen.getByText('Dashboard Protected')).toBeInTheDocument();
 
     // Trigger 401 unauthorized
-    triggerUnauthorized();
+    act(() => {
+      triggerUnauthorized();
+    });
 
     // Verify localStorage cleared
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+
+    // Acceptance criteria: Done when: A 401 sends the user to login
+    await waitFor(() => {
+      expect(screen.getByText('Login Page')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Dashboard Protected')).not.toBeInTheDocument();
   });
 });
 
