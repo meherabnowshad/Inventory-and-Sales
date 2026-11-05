@@ -1,17 +1,24 @@
-import { Activity, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Activity, CheckCircle2, AlertTriangle, ShieldCheck, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useHealthStatus } from '../../hooks/useHealthStatus';
+import { useAuth } from '../../context/AuthContext';
 
 export function Header() {
   const { health, loading, error } = useHealthStatus();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-10">
       <div className="flex items-center gap-3">
-        <h2 className="text-lg font-semibold text-slate-800">
-          Inventory &amp; Sales Management System
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-800">SmartMart IMS</h2>
         <span className="hidden sm:inline-flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-          <ShieldCheck className="w-3 h-3" /> Sprint 1 (Group 1 SRS)
+          <ShieldCheck className="w-3 h-3" /> Sprint 1 (Group 1)
         </span>
       </div>
 
@@ -40,18 +47,36 @@ export function Header() {
           )}
         </div>
 
-        {/* Demo profile indicator */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
-            M
+        {/* User profile & quick logout */}
+        {user ? (
+          <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                {user.name.charAt(0)}
+              </div>
+              <div className="hidden md:block text-left text-xs">
+                <p className="font-semibold text-slate-700">{user.name}</p>
+                <p className="text-slate-400 text-[10px] uppercase font-semibold">{user.role}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              aria-label="Sign Out"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-          <div className="hidden md:block text-left text-xs">
-            <p className="font-semibold text-slate-700">Meherab (Dev 2)</p>
-            <p className="text-slate-400 text-[10px] uppercase font-semibold">
-              Demo Profile · Sprint 1
-            </p>
-          </div>
-        </div>
+        ) : (
+          <button
+            onClick={() => navigate('/login')}
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+          >
+            Sign In
+          </button>
+        )}
       </div>
     </header>
   );
