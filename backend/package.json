@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend API for Inventory and Sales Management System",
   "main": "dist/server.js",
+  "//": {
+    "@prisma/client": "Prisma DB client used by src/config/prisma.ts; schema in prisma/schema.prisma, generated via 'npm run prisma:generate'. Version must match 'prisma' CLI."
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
@@ -15,7 +18,7 @@
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
-    "@prisma/client": "^6.4.0",
+    "@prisma/client": "5.22.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -31,7 +34,7 @@
     "@types/node": "^22.13.4",
     "eslint": "^9.20.1",
     "prettier": "^3.5.1",
-    "prisma": "^6.4.0",
+    "prisma": "5.22.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.24.0"
