@@ -1,17 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Receipt, Calendar, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { fetchSales, SaleItem } from '../services/api';
 
-interface MockSale {
-  id: string;
-  saleNumber: string;
-  itemsCount: number;
-  totalAmount: string;
-  taxAmount: string;
-  date: string;
-  status: 'COMPLETED' | 'PENDING' | 'CANCELLED';
-}
-
-const MOCK_SALES: MockSale[] = [
+const MOCK_SALES: SaleItem[] = [
   {
     id: '1',
     saleNumber: 'INV-2026-0001',
@@ -42,17 +33,30 @@ const MOCK_SALES: MockSale[] = [
 ];
 
 export function SalesPage() {
+  const [sales, setSales] = useState<SaleItem[]>(MOCK_SALES);
   const [activeBanner, setActiveBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchSales().then((data) => {
+      if (active && data && data.length > 0) {
+        setSales(data);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Sales &amp; Orders</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Point of Sale records, transactions, and order fulfillment (All monetary figures in BDT
-            · BR-13).
+          <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Sales &amp; Orders</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Point of Sale records, transactions, and order fulfillment (All monetary figures in
+            BDT).
           </p>
         </div>
         <button
@@ -62,7 +66,7 @@ export function SalesPage() {
               'POS Transaction flow and receipt printer integration planned for Sprint 2.',
             )
           }
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-zinc-900 to-zinc-800 hover:from-black hover:to-zinc-900 text-white rounded-lg text-sm font-semibold shadow-sm transition-all"
         >
           <Plus className="w-4 h-4" />
           <span>New Sale Entry</span>
@@ -70,12 +74,12 @@ export function SalesPage() {
       </div>
 
       {activeBanner && (
-        <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-700 flex items-center justify-between">
+        <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg text-xs text-zinc-800 flex items-center justify-between">
           <span>{activeBanner}</span>
           <button
             type="button"
             onClick={() => setActiveBanner(null)}
-            className="font-bold ml-4 hover:text-indigo-900"
+            className="font-bold ml-4 hover:text-black"
           >
             ✕
           </button>
@@ -83,18 +87,18 @@ export function SalesPage() {
       )}
 
       {/* Orders Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-zinc-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Receipt className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-semibold text-slate-800">Recent Transactions</h2>
+            <Receipt className="w-4 h-4 text-zinc-500" />
+            <h2 className="text-sm font-bold text-zinc-800">Recent Transactions</h2>
           </div>
-          <span className="text-xs text-slate-500">Showing {MOCK_SALES.length} records</span>
+          <span className="text-xs text-zinc-500">Showing {sales.length} records</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 text-xs uppercase font-semibold">
+            <thead className="bg-zinc-100/80 text-zinc-700 border-b border-zinc-200 text-xs uppercase font-semibold">
               <tr>
                 <th className="py-3 px-4">Sale Number</th>
                 <th className="py-3 px-4">Timestamp</th>
@@ -104,40 +108,42 @@ export function SalesPage() {
                 <th className="py-3 px-4">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {MOCK_SALES.map((sale) => (
-                <tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3.5 px-4 font-mono text-xs font-semibold text-slate-700">
+            <tbody className="divide-y divide-zinc-100">
+              {sales.map((sale) => (
+                <tr key={sale.id} className="hover:bg-zinc-50/80 transition-colors">
+                  <td className="py-3.5 px-4 font-mono text-xs font-semibold text-zinc-700">
                     {sale.saleNumber}
                   </td>
-                  <td className="py-3.5 px-4 text-slate-500 text-xs">
+                  <td className="py-3.5 px-4 text-zinc-500 text-xs">
                     <div className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <Calendar className="w-3.5 h-3.5 text-zinc-400" />
                       <span>{sale.date}</span>
                     </div>
                   </td>
-                  <td className="py-3.5 px-4 text-center font-semibold text-slate-700">
+                  <td className="py-3.5 px-4 text-center font-semibold text-zinc-700">
                     {sale.itemsCount}
                   </td>
-                  <td className="py-3.5 px-4 text-right font-medium text-slate-500">
+                  <td className="py-3.5 px-4 text-right font-medium text-zinc-500">
                     BDT {Number(sale.taxAmount).toFixed(2)}
                   </td>
-                  <td className="py-3.5 px-4 text-right font-bold text-slate-900">
+                  <td className="py-3.5 px-4 text-right font-bold text-zinc-900">
                     BDT {Number(sale.totalAmount).toFixed(2)}
                   </td>
                   <td className="py-3.5 px-4">
                     <span
                       className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         sale.status === 'COMPLETED'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          ? 'bg-zinc-100 text-zinc-800 border border-zinc-300'
                           : sale.status === 'PENDING'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : 'bg-red-50 text-red-700 border border-red-200'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                            : 'bg-rose-50 text-rose-800 border border-rose-300'
                       }`}
                     >
-                      {sale.status === 'COMPLETED' && <CheckCircle2 className="w-3 h-3" />}
-                      {sale.status === 'PENDING' && <Clock className="w-3 h-3" />}
-                      {sale.status === 'CANCELLED' && <XCircle className="w-3 h-3" />}
+                      {sale.status === 'COMPLETED' && (
+                        <CheckCircle2 className="w-3 h-3 text-zinc-600" />
+                      )}
+                      {sale.status === 'PENDING' && <Clock className="w-3 h-3 text-amber-600" />}
+                      {sale.status === 'CANCELLED' && <XCircle className="w-3 h-3 text-rose-600" />}
                       {sale.status}
                     </span>
                   </td>

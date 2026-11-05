@@ -1,13 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Header } from '../components/layout/Header';
 import { AuthProvider } from '../context/AuthContext';
-import * as api from '../services/api';
+import { TOKEN_STORAGE_KEY, USER_STORAGE_KEY } from '../services/api';
 
-describe('Header Component Health Badge', () => {
+describe('Header Component', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   const renderWithProviders = (ui: React.ReactElement) => {
@@ -18,39 +18,27 @@ describe('Header Component Health Badge', () => {
     );
   };
 
-  it('displays Connected (UP) when backend reports healthy status', async () => {
-    vi.spyOn(api, 'fetchHealth').mockResolvedValueOnce({
-      status: 'UP',
-      service: 'Inventory and Sales Backend API',
-      version: '1.0.0',
-      environment: 'development',
-      uptimeSeconds: 50,
-      database: { connected: true, message: 'OK' },
-      timestamp: new Date().toISOString(),
-    });
-
+  it('renders brand name and sign in button when unauthenticated', () => {
     renderWithProviders(<Header />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Connected \(UP\)/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/SmartMart/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it('displays Degraded (DB Offline) when database is disconnected (HTTP 503)', async () => {
-    vi.spyOn(api, 'fetchHealth').mockResolvedValueOnce({
-      status: 'DEGRADED',
-      service: 'Inventory and Sales Backend API',
-      version: '1.0.0',
-      environment: 'development',
-      uptimeSeconds: 50,
-      database: { connected: false, message: 'DB down' },
-      timestamp: new Date().toISOString(),
-    });
+  it('renders user name and sign out button when authenticated', () => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, 'test_token');
+    localStorage.setItem(
+      USER_STORAGE_KEY,
+      JSON.stringify({
+        id: 1,
+        name: 'Sadia Rahman',
+        username: 'sadia',
+        email: 'sadia@smartmart.local',
+        role: 'Administrator',
+      }),
+    );
 
     renderWithProviders(<Header />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Degraded \(DB Offline\)/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText('Sadia Rahman')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
   });
 });

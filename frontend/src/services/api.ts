@@ -155,3 +155,48 @@ export async function logoutApi(): Promise<void> {
     localStorage.removeItem(USER_STORAGE_KEY);
   }
 }
+
+export interface ProductItem {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  price: string;
+  stock: number;
+  minStock: number;
+  isActive?: boolean;
+}
+
+export async function fetchProducts(): Promise<ProductItem[]> {
+  try {
+    const response = await apiClient.get<{ success: boolean; data: ProductItem[] }>('/inventory');
+    if (response.data && response.data.data && response.data.data.length > 0) {
+      return response.data.data;
+    }
+  } catch {
+    // Graceful fallback for offline / mock
+  }
+  return [];
+}
+
+export interface SaleItem {
+  id: string;
+  saleNumber: string;
+  itemsCount: number;
+  totalAmount: string;
+  taxAmount: string;
+  date: string;
+  status: 'COMPLETED' | 'PENDING' | 'CANCELLED';
+}
+
+export async function fetchSales(): Promise<SaleItem[]> {
+  try {
+    const response = await apiClient.get<{ success: boolean; data: SaleItem[] }>('/sales');
+    if (response.data && response.data.data && response.data.data.length > 0) {
+      return response.data.data;
+    }
+  } catch {
+    // Graceful fallback for offline / mock
+  }
+  return [];
+}

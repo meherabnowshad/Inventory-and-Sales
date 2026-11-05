@@ -84,23 +84,20 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#f4f5f7] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="p-3.5 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-200">
-            <ShieldCheck className="w-10 h-10" />
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black text-zinc-100 shadow-xl shadow-zinc-900/20 ring-1 ring-zinc-700">
+            <ShieldCheck className="w-10 h-10 text-zinc-200" />
           </div>
         </div>
-        <h1 className="mt-4 text-center text-2xl font-bold tracking-tight text-slate-900">
-          Sign in to SmartMart IMS
+        <h1 className="mt-4 text-center text-2xl font-bold tracking-tight text-zinc-900">
+          Sign In
         </h1>
-        <p className="mt-1 text-center text-xs text-slate-500">
-          Role-Based Access Control • FR-AUTH-01 &amp; FR-AUTH-07
-        </p>
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-sm border border-slate-200 rounded-2xl sm:px-10">
+        <div className="bg-white py-8 px-6 shadow-sm border border-zinc-200/90 rounded-2xl sm:px-10">
           {/* FR-AUTH-01 Generic Server Error Banner */}
           {serverError && (
             <div
@@ -116,12 +113,12 @@ export function LoginPage() {
             <div>
               <label
                 htmlFor="login-username"
-                className="block text-xs font-semibold text-slate-700 uppercase mb-1 tracking-wider"
+                className="block text-xs font-semibold text-zinc-700 uppercase mb-1 tracking-wider"
               >
                 Username or Email
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <User className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   id="login-username"
                   name="usernameOrEmail"
@@ -134,12 +131,12 @@ export function LoginPage() {
                       setFieldErrors((prev) => ({ ...prev, usernameOrEmail: undefined }));
                     }
                   }}
-                  placeholder="e.g. sadia, rafi, or mitu"
+                  placeholder="user@example.com"
                   aria-invalid={!!fieldErrors.usernameOrEmail}
                   className={`w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
                     fieldErrors.usernameOrEmail
                       ? 'border-rose-400 focus:ring-rose-500 bg-rose-50/30'
-                      : 'border-slate-200 focus:ring-indigo-500'
+                      : 'border-zinc-200 focus:border-zinc-800 focus:ring-zinc-800 bg-zinc-50/50 focus:bg-white text-zinc-900'
                   }`}
                 />
               </div>
@@ -153,12 +150,12 @@ export function LoginPage() {
             <div>
               <label
                 htmlFor="login-password"
-                className="block text-xs font-semibold text-slate-700 uppercase mb-1 tracking-wider"
+                className="block text-xs font-semibold text-zinc-700 uppercase mb-1 tracking-wider"
               >
                 Password
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   id="login-password"
                   name="password"
@@ -176,7 +173,7 @@ export function LoginPage() {
                   className={`w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
                     fieldErrors.password
                       ? 'border-rose-400 focus:ring-rose-500 bg-rose-50/30'
-                      : 'border-slate-200 focus:ring-indigo-500'
+                      : 'border-zinc-200 focus:border-zinc-800 focus:ring-zinc-800 bg-zinc-50/50 focus:bg-white text-zinc-900'
                   }`}
                 />
               </div>
@@ -188,17 +185,16 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer"
+              className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 hover:from-black hover:to-zinc-800 disabled:from-zinc-400 disabled:to-zinc-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-all cursor-pointer"
             >
               <span>{isSubmitting ? 'Signing in...' : 'Sign In'}</span>
-              <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
           {/* Quick Demo Accounts Helper for Interns & QA Review */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 mb-2.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+          <div className="mt-6 pt-5 border-t border-zinc-100">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 mb-2.5">
+              <Sparkles className="w-3.5 h-3.5 text-zinc-600" />
               <span>Sprint 1 Demo Test Accounts (Password: {DEMO_PASSWORD}):</span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs">
@@ -207,12 +203,12 @@ export function LoginPage() {
                   key={demo.username}
                   type="button"
                   onClick={() => handleQuickFill(demo.username)}
-                  className="p-2 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 rounded-lg text-left transition-all group cursor-pointer"
+                  className="p-2 border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-100/70 rounded-lg text-left transition-all group cursor-pointer"
                 >
-                  <p className="font-semibold text-slate-800 group-hover:text-indigo-600">
+                  <p className="font-semibold text-zinc-800 group-hover:text-zinc-950">
                     {demo.username}
                   </p>
-                  <p className="text-[10px] text-slate-400 truncate">{demo.role}</p>
+                  <p className="text-[10px] text-zinc-400 truncate">{demo.role}</p>
                 </button>
               ))}
             </div>

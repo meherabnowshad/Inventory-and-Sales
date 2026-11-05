@@ -16,9 +16,12 @@ async function main(): Promise<void> {
   const passwordHash = await hash(password, { algorithm: Algorithm.Argon2id });
 
   console.log('Seeding database...');
-  const counts = await prisma.$transaction((tx) => runSeed(tx, { passwordHash, log: console.log }), {
-    timeout: 60_000,
-  });
+  const counts = await prisma.$transaction(
+    (tx) => runSeed(tx, { passwordHash, log: console.log }),
+    {
+      timeout: 60_000,
+    },
+  );
   console.log('Seed finished. Rows now in the database:');
   console.table(counts);
 }

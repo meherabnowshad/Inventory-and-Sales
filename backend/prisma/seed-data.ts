@@ -31,7 +31,12 @@ export interface SeedOptions {
 const ROLES = ['Administrator', 'Sales Staff', 'Store Staff'] as const;
 
 const USERS = [
-  { username: 'sadia', name: 'Sadia Rahman', email: 'sadia@smartmart.local', role: 'Administrator' },
+  {
+    username: 'sadia',
+    name: 'Sadia Rahman',
+    email: 'sadia@smartmart.local',
+    role: 'Administrator',
+  },
   { username: 'rafi', name: 'Rafi Ahmed', email: 'rafi@smartmart.local', role: 'Sales Staff' },
   { username: 'mitu', name: 'Mitu Akter', email: 'mitu@smartmart.local', role: 'Store Staff' },
 ] as const;
@@ -45,23 +50,81 @@ const CATEGORIES = [
 
 // Prices in BDT. min_stock = low-stock threshold (FR-INV-07: alert when stock is strictly below it).
 const PRODUCTS = [
-  { sku: 'KB-K120', name: 'Logitech K120 Keyboard', category: 'Keyboards', purchase: '700.00', selling: '950.00', minStock: 10 },
-  { sku: 'MS-M90', name: 'Logitech M90 Mouse', category: 'Mice', purchase: '350.00', selling: '500.00', minStock: 15 },
-  { sku: 'MN-24LED', name: '24-inch LED Monitor', category: 'Monitors', purchase: '11000.00', selling: '13500.00', minStock: 5 },
-  { sku: 'CB-HDMI15', name: 'HDMI Cable 1.5 m', category: 'Cables & Chargers', purchase: '120.00', selling: '200.00', minStock: 20 },
+  {
+    sku: 'KB-K120',
+    name: 'Logitech K120 Keyboard',
+    category: 'Keyboards',
+    purchase: '700.00',
+    selling: '950.00',
+    minStock: 10,
+  },
+  {
+    sku: 'MS-M90',
+    name: 'Logitech M90 Mouse',
+    category: 'Mice',
+    purchase: '350.00',
+    selling: '500.00',
+    minStock: 15,
+  },
+  {
+    sku: 'MN-24LED',
+    name: '24-inch LED Monitor',
+    category: 'Monitors',
+    purchase: '11000.00',
+    selling: '13500.00',
+    minStock: 5,
+  },
+  {
+    sku: 'CB-HDMI15',
+    name: 'HDMI Cable 1.5 m',
+    category: 'Cables & Chargers',
+    purchase: '120.00',
+    selling: '200.00',
+    minStock: 20,
+  },
   // opening stock 6 < threshold 10, so the low-stock list (FR-INV-07) has one entry to show
-  { sku: 'CH-20W', name: 'USB-C Charger 20 W', category: 'Cables & Chargers', purchase: '450.00', selling: '650.00', minStock: 10 },
+  {
+    sku: 'CH-20W',
+    name: 'USB-C Charger 20 W',
+    category: 'Cables & Chargers',
+    purchase: '450.00',
+    selling: '650.00',
+    minStock: 10,
+  },
 ] as const;
 
 const SUPPLIERS = [
-  { name: 'Tech Source BD', contact: 'Imran Hossain', phone: '01811000001', email: 'sales@techsource.example', address: 'Elephant Road, Dhaka' },
-  { name: 'Digital World Ltd', contact: 'Farzana Islam', phone: '01811000002', email: 'orders@digitalworld.example', address: 'Agrabad, Chattogram' },
-  { name: 'Gadget Hub', contact: 'Tanvir Alam', phone: '01811000003', email: null, address: 'Zindabazar, Sylhet' },
+  {
+    name: 'Tech Source BD',
+    contact: 'Imran Hossain',
+    phone: '01811000001',
+    email: 'sales@techsource.example',
+    address: 'Elephant Road, Dhaka',
+  },
+  {
+    name: 'Digital World Ltd',
+    contact: 'Farzana Islam',
+    phone: '01811000002',
+    email: 'orders@digitalworld.example',
+    address: 'Agrabad, Chattogram',
+  },
+  {
+    name: 'Gadget Hub',
+    contact: 'Tanvir Alam',
+    phone: '01811000003',
+    email: null,
+    address: 'Zindabazar, Sylhet',
+  },
 ] as const;
 
 const CUSTOMERS = [
   { name: 'Rahim', phone: '01711000001', email: null, address: 'Mirpur, Dhaka' },
-  { name: 'Nasrin Akter', phone: '01711000002', email: 'nasrin@example.com', address: 'Uttara, Dhaka' },
+  {
+    name: 'Nasrin Akter',
+    phone: '01711000002',
+    email: 'nasrin@example.com',
+    address: 'Uttara, Dhaka',
+  },
 ] as const;
 
 // Opening stock, received in full by the store staff (BR: a PO is received once, in full).
@@ -268,7 +331,9 @@ export async function runSeed(db: Db, options: SeedOptions): Promise<Record<stri
     'purchase_order_lines',
     'stock_movements',
   ]) {
-    const rows = await db.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${table}`);
+    const rows = await db.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM ${table}`,
+    );
     counts[table] = rows[0].n;
   }
   return counts;
