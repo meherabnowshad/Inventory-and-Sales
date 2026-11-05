@@ -22,8 +22,12 @@ export function LoginPage() {
   const validateForm = (): boolean => {
     const errors: { usernameOrEmail?: string; password?: string } = {};
 
-    if (!usernameOrEmail.trim()) {
+    const trimmedInput = usernameOrEmail.trim();
+    if (!trimmedInput) {
       errors.usernameOrEmail = 'Username or email is required';
+    } else if (trimmedInput.includes('@') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedInput)) {
+      // If the input looks like an email (contains @), validate the format
+      errors.usernameOrEmail = 'Please enter a valid email address';
     }
 
     if (!password) {

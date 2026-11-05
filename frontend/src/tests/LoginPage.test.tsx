@@ -53,6 +53,39 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     expect(await screen.findByText(/password is required/i)).toBeInTheDocument();
   });
 
+  it('flags malformed email format when input contains @ (FR-AUTH-01)', async () => {
+    renderLoginPage();
+
+    const usernameInput = screen.getByLabelText(/username or email/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitBtn = screen.getByRole('button', { name: /sign in/i });
+
+    // Enter a malformed email (has @ but invalid format)
+    fireEvent.change(usernameInput, { target: { value: 'user@' } });
+    fireEvent.change(passwordInput, { target: { value: 'Smart@1234' } });
+    fireEvent.click(submitBtn);
+
+    expect(await screen.findByText(/please enter a valid email address/i)).toBeInTheDocument();
+  });
+
+  it('accepts plain usernames without email validation', async () => {
+    renderLoginPage();
+
+    const usernameInput = screen.getByLabelText(/username or email/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitBtn = screen.getByRole('button', { name: /sign in/i });
+
+    // A plain username (no @) should not trigger email format validation
+    fireEvent.change(usernameInput, { target: { value: 'sadia' } });
+    fireEvent.change(passwordInput, { target: { value: 'Smart@1234' } });
+    fireEvent.click(submitBtn);
+
+    // Should NOT show email validation error — form passes client validation
+    await waitFor(() => {
+      expect(screen.queryByText(/please enter a valid email address/i)).not.toBeInTheDocument();
+    });
+  });
+
   it('enforces password minimum length of 8 characters (FR-AUTH-04)', async () => {
     renderLoginPage();
 
