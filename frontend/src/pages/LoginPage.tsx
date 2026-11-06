@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, User, ArrowRight, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
+import { Lock, User, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { DEMO_USERS, DEMO_PASSWORD } from '../services/api';
 
