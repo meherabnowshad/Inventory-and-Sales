@@ -1,20 +1,19 @@
 # Inventory and Sales Management System (IMS)
 
-
 ## 📋 Table of Contents
 
-1. [Overview & Architecture](#-overview--architecture)
-2. [Sprint 1 Scope & Subtasks](#-sprint-1-scope--subtasks)
+1. [Overview &amp; Architecture](#-overview--architecture)
+2. [Sprint 1 Scope &amp; Subtasks](#-sprint-1-scope--subtasks)
 3. [Prerequisites](#-prerequisites)
 4. [Quick Start (Single Command)](#-quick-start-single-command)
 5. [Detailed Setup Steps](#-detailed-setup-steps)
-6. [Database Setup (IMS-04)](#-database-setup-ims-04)
-7. [Backend Service (IMS-03.1)](#-backend-service-ims-031)
-8. [Frontend Application (IMS-03.2)](#-frontend-application-ims-032)
+6. [Database Setup](#-database-setup-ims-04)
+7. [Backend Service ](#-backend-service-ims-031)
+8. [Frontend Application ](#-frontend-application-ims-032)
 9. [Available Monorepo Commands](#-available-monorepo-commands)
-10. [API & Verification Endpoints](#-api--verification-endpoints)
-11. [Code Quality & Standards](#-code-quality--standards)
-12. [Branch Protection & PR Workflow](#-branch-protection--pr-workflow)
+10. [API &amp; Verification Endpoints](#-api--verification-endpoints)
+11. [Code Quality &amp; Standards](#-code-quality--standards)
+12. [Branch Protection &amp; PR Workflow](#-branch-protection--pr-workflow)
 13. [Troubleshooting](#-troubleshooting)
 
 ---
@@ -58,6 +57,7 @@ Inventory and Sales/
 For complete component-specific architectures, routes, and individual command references, see the dedicated [Backend Service](#-backend-service-ims-031) and [Frontend Application](#-frontend-application-ims-032) sections below. This root README is the unified single source of truth for the entire monorepo, both services, and the database.
 
 ---
+
                          |
 
 ---
@@ -241,11 +241,11 @@ Expected results:
 
 All demo accounts use `Smart@1234` by default. Set `SEED_PASSWORD` before seeding to override it.
 
-| Username | Role          |
-| -------- | ------------- |
-| `sadia`  | Administrator |
-| `rafi`   | Sales Staff   |
-| `mitu`   | Store Staff   |
+| Username  | Role          |
+| --------- | ------------- |
+| `sadia` | Administrator |
+| `rafi`  | Sales Staff   |
+| `mitu`  | Store Staff   |
 
 The seed script refuses to run when `NODE_ENV=production`.
 
@@ -258,22 +258,22 @@ npm run db:down --workspace=backend
 npm run db:setup --workspace=backend
 ```
 
-| Command                                  | Purpose                                      |
-| ---------------------------------------- | -------------------------------------------- |
-| `npm run db:migrate --workspace=backend` | Applies pending migrations                   |
-| `npm run db:seed --workspace=backend`    | Loads demo data (idempotent)                 |
-| `npm run db:setup --workspace=backend`   | Applies migrations, then seeds               |
+| Command                                    | Purpose                                        |
+| ------------------------------------------ | ---------------------------------------------- |
+| `npm run db:migrate --workspace=backend` | Applies pending migrations                     |
+| `npm run db:seed --workspace=backend`    | Loads demo data (idempotent)                   |
+| `npm run db:setup --workspace=backend`   | Applies migrations, then seeds                 |
 | `npm run db:down --workspace=backend`    | Drops tables using the checked-in `down.sql` |
 
 ### Database troubleshooting
 
-| Error                                          | What to check                                                                        |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Error                                            | What to check                                                                          |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | `P1000 Authentication failed`                  | Check the username/password in `backend/.env` and the PostgreSQL role created above. |
 | `P1001 Can't reach database server`            | Start PostgreSQL and confirm it listens on port `5432`.                              |
-| `P1003 Database ... does not exist`            | Create `inventory_sales_db` and confirm `DATABASE_URL` names it.                     |
-| `permission denied to create database`         | Recreate the local role with `CREATEDB` or run `ALTER USER smartmart CREATEDB;`.     |
-| `Environment variable not found: DATABASE_URL` | Run `npm run setup:env` from the repository root and check `backend/.env`.           |
+| `P1003 Database ... does not exist`            | Create `inventory_sales_db` and confirm `DATABASE_URL` names it.                   |
+| `permission denied to create database`         | Recreate the local role with `CREATEDB` or run `ALTER USER smartmart CREATEDB;`.   |
+| `Environment variable not found: DATABASE_URL` | Run `npm run setup:env` from the repository root and check `backend/.env`.         |
 | `Cannot find module '@node-rs/argon2'`         | Run `npm install` at the repository root.                                            |
 | `\dt` gives a syntax error                     | Run it in `psql`/SQL Shell, not in PowerShell or Command Prompt.                     |
 
@@ -290,7 +290,7 @@ Each team member follows steps 1 to 6 on their local machine and records their v
 
 ---
 
-## ⚙️ Backend Service 
+## ⚙️ Backend Service
 
 The backend is an Express.js REST API written in TypeScript with Prisma ORM for PostgreSQL, Helmet for HTTP security headers, CORS, Morgan request logging, and strict ESLint/Prettier formatting standards.
 
@@ -310,31 +310,30 @@ The backend is an Express.js REST API written in TypeScript with Prisma ORM for 
 
 Commands can be run from repository root using `--workspace=backend`, or directly within the `backend/` directory:
 
-| Command                   | Root Workspace Invocation                     | Description                                                    |
-| :------------------------ | :-------------------------------------------- | :------------------------------------------------------------- |
+| Command                     | Root Workspace Invocation                       | Description                                                        |
+| :-------------------------- | :---------------------------------------------- | :----------------------------------------------------------------- |
 | `npm run dev`             | `npm run dev:backend`                         | Starts backend with hot-reload via `tsx watch` on port `5001`. |
-| `npm run build`           | `npm run build:backend`                       | Compiles TypeScript into `backend/dist/`.                      |
-| `npm run start`           | `npm run start --workspace=backend`           | Executes compiled production build from `dist/server.js`.      |
-| `npm run lint`            | `npm run lint --workspace=backend`            | Runs ESLint across `backend/src/`.                             |
-| `npm run lint:fix`        | `npm run lint:fix --workspace=backend`        | Fixes auto-fixable lint issues in backend.                     |
-| `npm run format`          | `npm run format --workspace=backend`          | Formats backend source files with Prettier.                    |
-| `npm run prisma:generate` | `npm run prisma:generate --workspace=backend` | Generates latest Prisma Client.                                |
-| `npm run db:migrate`      | `npm run db:migrate --workspace=backend`      | Applies pending Prisma migrations (`prisma migrate deploy`).   |
-| `npm run db:seed`         | `npm run db:seed --workspace=backend`         | Runs idempotent seed loader (`prisma db seed`).                |
-| `npm run db:setup`        | `npm run db:setup --workspace=backend`        | Runs migrations and seeds in one command.                      |
-| `npm run db:down`         | `npm run db:down --workspace=backend`         | Drops tables with `down.sql` (use only in local dev).          |
+| `npm run build`           | `npm run build:backend`                       | Compiles TypeScript into `backend/dist/`.                        |
+| `npm run start`           | `npm run start --workspace=backend`           | Executes compiled production build from `dist/server.js`.        |
+| `npm run lint`            | `npm run lint --workspace=backend`            | Runs ESLint across `backend/src/`.                               |
+| `npm run lint:fix`        | `npm run lint:fix --workspace=backend`        | Fixes auto-fixable lint issues in backend.                         |
+| `npm run format`          | `npm run format --workspace=backend`          | Formats backend source files with Prettier.                        |
+| `npm run prisma:generate` | `npm run prisma:generate --workspace=backend` | Generates latest Prisma Client.                                    |
+| `npm run db:migrate`      | `npm run db:migrate --workspace=backend`      | Applies pending Prisma migrations (`prisma migrate deploy`).     |
+| `npm run db:seed`         | `npm run db:seed --workspace=backend`         | Runs idempotent seed loader (`prisma db seed`).                  |
+| `npm run db:setup`        | `npm run db:setup --workspace=backend`        | Runs migrations and seeds in one command.                          |
+| `npm run db:down`         | `npm run db:down --workspace=backend`         | Drops tables with `down.sql` (use only in local dev).            |
 
 ---
 
-## 💻 Frontend Application 
-
+## 💻 Frontend Application
 
 The frontend is a modern Single Page Application (SPA) built with React 18, Vite, TypeScript, Tailwind CSS, Lucide icons, Vitest, React Testing Library, and React Router v6.
 
 ### Frontend Application Routes
 
-| Route        | View                | Description                                                                                                                  |
-| :----------- | :------------------ | :--------------------------------------------------------------------------------------------------------------------------- |
+| Route          | View                      | Description                                                                                                                  |
+| :------------- | :------------------------ | :--------------------------------------------------------------------------------------------------------------------------- |
 | `/`          | **Dashboard**       | Overview dashboard with metric KPI cards, recent activity, and live backend connectivity status.                             |
 | `/inventory` | **Inventory**       | Real-time product inventory table, stock status indicators (In Stock, Low Stock, Out of Stock), category filter, and search. |
 | `/sales`     | **Sales History**   | Point of sale transaction records aligned with the Prisma schema with BDT currency formatting.                               |
@@ -346,33 +345,33 @@ The frontend is a modern Single Page Application (SPA) built with React 18, Vite
 
 Commands can be run from repository root using `--workspace=frontend`, or directly within the `frontend/` directory:
 
-| Command                | Root Workspace Invocation                   | Description                                                               |
-| :--------------------- | :------------------------------------------ | :------------------------------------------------------------------------ |
-| `npm run dev`          | `npm run dev:frontend`                      | Starts Vite dev server with Hot Module Replacement on port `5173`.        |
+| Command                  | Root Workspace Invocation                     | Description                                                                   |
+| :----------------------- | :-------------------------------------------- | :---------------------------------------------------------------------------- |
+| `npm run dev`          | `npm run dev:frontend`                      | Starts Vite dev server with Hot Module Replacement on port `5173`.          |
 | `npm run build`        | `npm run build:frontend`                    | Type-checks with `tsc` and bundles production assets to `frontend/dist/`. |
-| `npm run test`         | `npm run test:frontend`                     | Runs Vitest automated component and unit test suites.                     |
-| `npm run preview`      | `npm run preview --workspace=frontend`      | Locally previews production build.                                        |
-| `npm run lint`         | `npm run lint --workspace=frontend`         | Runs ESLint across `frontend/src/`.                                       |
-| `npm run lint:fix`     | `npm run lint:fix --workspace=frontend`     | Fixes auto-fixable lint issues in frontend.                               |
-| `npm run format`       | `npm run format --workspace=frontend`       | Formats frontend source files with Prettier.                              |
-| `npm run format:check` | `npm run format:check --workspace=frontend` | Verifies frontend formatting without writing changes.                     |
+| `npm run test`         | `npm run test:frontend`                     | Runs Vitest automated component and unit test suites.                         |
+| `npm run preview`      | `npm run preview --workspace=frontend`      | Locally previews production build.                                            |
+| `npm run lint`         | `npm run lint --workspace=frontend`         | Runs ESLint across `frontend/src/`.                                         |
+| `npm run lint:fix`     | `npm run lint:fix --workspace=frontend`     | Fixes auto-fixable lint issues in frontend.                                   |
+| `npm run format`       | `npm run format --workspace=frontend`       | Formats frontend source files with Prettier.                                  |
+| `npm run format:check` | `npm run format:check --workspace=frontend` | Verifies frontend formatting without writing changes.                         |
 
 ---
 
 ## 🛠 Available Monorepo Commands
 
-| Command                  | Purpose                                                      |
-| :----------------------- | :----------------------------------------------------------- |
+| Command                    | Purpose                                                          |
+| :------------------------- | :--------------------------------------------------------------- |
 | `npm run dev`            | Starts Backend (`:5001`) and Frontend (`:5173`) concurrently |
-| `npm run dev:backend`    | Starts Backend with hot-reloading (`tsx`)                    |
-| `npm run dev:frontend`   | Starts Frontend with Vite HMR                                |
-| `npm run build`          | Compiles both backend and frontend for production            |
-| `npm run build:backend`  | Compiles backend TypeScript to `backend/dist`                |
-| `npm run build:frontend` | Bundles frontend static assets to `frontend/dist`            |
-| `npm run lint`           | Runs ESLint on both backend and frontend                     |
-| `npm run lint:fix`       | Fixes auto-fixable linting issues in both packages           |
-| `npm run format`         | Runs Prettier across all source code                         |
-| `npm run format:check`   | Verifies code formatting across the repository               |
+| `npm run dev:backend`    | Starts Backend with hot-reloading (`tsx`)                      |
+| `npm run dev:frontend`   | Starts Frontend with Vite HMR                                    |
+| `npm run build`          | Compiles both backend and frontend for production                |
+| `npm run build:backend`  | Compiles backend TypeScript to `backend/dist`                  |
+| `npm run build:frontend` | Bundles frontend static assets to `frontend/dist`              |
+| `npm run lint`           | Runs ESLint on both backend and frontend                         |
+| `npm run lint:fix`       | Fixes auto-fixable linting issues in both packages               |
+| `npm run format`         | Runs Prettier across all source code                             |
+| `npm run format:check`   | Verifies code formatting across the repository                   |
 | `npm run setup:env`      | Copies `.env.example` to `.env` in both packages             |
 
 ---
@@ -410,7 +409,7 @@ When the backend is running, verify system health:
 
 ---
 
-## 📐 Code Quality & Standards 
+## 📐 Code Quality & Standards
 
 - **TypeScript Strict Mode**: Both services enforce strict type checks.
 - **ESLint**: Standardized rules for JavaScript, TypeScript, and React hooks.
@@ -473,4 +472,4 @@ Direct commits to the `main` branch are blocked.
 
 ---
 
-_Authored by Meherab Hossain Nowshad • Inventory and Sales • 
+_Authored by Meherab Hossain Nowshad • Inventory and Sales •
