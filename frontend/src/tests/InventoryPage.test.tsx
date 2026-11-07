@@ -1,9 +1,14 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { InventoryPage } from '../pages/InventoryPage';
 import { getStockStatus } from '../utils/stock';
+import * as api from '../services/api';
 
 describe('InventoryPage Component & Logic', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(api, 'fetchProducts').mockResolvedValue([]);
+  });
   it('correctly derives stock status based on stock and minStock thresholds', () => {
     expect(getStockStatus(0, 5)).toBe('Out of Stock');
     expect(getStockStatus(-1, 5)).toBe('Out of Stock');

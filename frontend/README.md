@@ -7,38 +7,26 @@ Non-Functional Requirements covered: **NFR-SEC-03**, **NFR-MNT-01**, **NFR-OPS-0
 
 React 18 single-page application built with Vite, TypeScript, Tailwind CSS, Lucide icons, Vitest + React Testing Library, and React Router v6.
 
-## Quick Start (Single Command)
+## Setup
 
-```bash
-# 1. Install dependencies (from repository root)
-npm install
+Use the repository's [README](../README.md) as the single setup guide for the frontend, backend, and PostgreSQL database. The frontend can also run independently; from the repository root, run `npm install`, `npm run setup:env`, then `npm run dev:frontend`.
 
-# 2. Initialize environment file (from repository root)
-npm run setup:env
-# Or locally inside frontend/: cp .env.example .env
+## Frontend scripts
 
-# 3. Start development server
-npm run dev
-```
+Run these commands from the repository root with `--workspace=frontend`, or from `frontend/` without the workspace option.
 
-The Vite development server will start on `http://localhost:5173`.  
-The backend API proxy forwards all requests from `/api` directly to `http://localhost:5001`.
+- `npm run dev` — Starts Vite with Hot Module Replacement.
+- `npm run build` — Type-checks and builds optimized production assets.
+- `npm run test` — Runs Vitest component and unit tests.
+- `npm run preview` — Previews the production build.
+- `npm run lint` — Runs ESLint on `src/`.
+- `npm run format` — Formats frontend source files with Prettier.
+- `npm run format:check` — Checks formatting without changing files.
 
-## Available Scripts
+## Routes
 
-- `npm run dev` — Starts Vite dev server with Hot Module Replacement (HMR) on port 5173 (strictPort enabled).
-- `npm run build` — Compiles TypeScript and builds optimized production bundles to `dist/`.
-- `npm run test` — Runs automated component and unit tests with Vitest & Testing Library.
-- `npm run preview` — Locally previews production build.
-- `npm run lint` — Runs ESLint across `src/`.
-- `npm run lint:fix` — Fixes auto-fixable lint issues.
-- `npm run format` — Formats source files using Prettier.
-- `npm run format:check` — Checks formatting using Prettier.
-
-## Routes Configured
-
-- `/` — Overview Dashboard with high-level KPIs (labeled as mock baseline) and backend connectivity indicator.
-- `/inventory` — Inventory management view with dynamic stock status derivation, search filter, and empty states.
-- `/sales` — Point of sale transaction history and order records aligned with Prisma schema (monetary values in BDT).
-- `/login` — Standalone user authentication skeleton with accessible inputs and role hints.
-- `*` (404) — Not Found fallback route rendered in-place (preserving user URL).
+- `/` — Overview dashboard with baseline KPIs and backend connectivity indicator.
+- `/inventory` — Inventory view with stock status, search, and empty states.
+- `/sales` — Sales transaction history.
+- `/login` — Authentication skeleton.
+- `*` — Not Found fallback.

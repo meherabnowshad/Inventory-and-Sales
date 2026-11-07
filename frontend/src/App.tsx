@@ -1,27 +1,56 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { MainLayout } from './components/layout/MainLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { SalesPage } from './pages/SalesPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { NoAccessPage } from './pages/NoAccessPage';
 
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Standalone Authentication Route (Not wrapped in MainLayout) */}
-        <Route path="/login" element={<LoginPage />} />
+      <AuthProvider>
+        <Routes>
+          {/* Public Authentication Route */}
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Core System Layout Routes */}
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="inventory" element={<InventoryPage />} />
-          <Route path="sales" element={<SalesPage />} />
-          {/* Catch-all 404 Route rendered directly without losing address bar URL */}
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-      </Routes>
+          {/* Core Authenticated Routes (Protected by Auth & RBAC) */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<MainLayout />}>
+              {/* Administrator Only: Dashboard (FR-AUTH-07) */}
+              <Route element={<ProtectedRoute allowedRoles={['Administrator']} />}>
+                <Route index element={<DashboardPage />} />
+              </Route>
+
+              {/* All Roles: Inventory (Admin, Sales Staff, Store Staff) */}
+              <Route
+                element={
+                  <ProtectedRoute allowedRoles={['Administrator', 'Sales Staff', 'Store Staff']} />
+                }
+              >
+                <Route path="inventory" element={<InventoryPage />} />
+              </Route>
+
+              {/* Administrator & Sales Staff: Sales */}
+              <Route element={<ProtectedRoute allowedRoles={['Administrator', 'Sales Staff']} />}>
+                <Route path="sales" element={<SalesPage />} />
+              </Route>
+
+              {/* Standalone No-Access Page */}
+              <Route path="no-access" element={<NoAccessPage />} />
+
+              {/* Catch-all 404 Route */}
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+          </Route>
+
+          {/* Root fallback */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }
