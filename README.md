@@ -290,8 +290,8 @@ Each team member follows steps 1 to 6 on their local machine and records their v
 | ------- | --------------------- | ------- | ---------- | ----------- | -------- | ------- |
 | Rashad  | Windows 11            | 20.20.2 | 16.15      | Yes         | Yes      | ~10     |
 | Meherab | macOS (Apple Silicon) | 22.23.1 | 16.15      | Yes         | Yes      | ~5      |
-| Radouan |                       |         |            |             |          |         |
-| QA 2    |                       |         |            |             |          |         |
+| Radouan | Windows 11            | 22.23.1 | 16.15      | Yes         | Yes      | ~5      |
+| Rejwana | Windows 11            | 20.20.2 | 16.15      | Yes         | Yes      | ~15     |
 
 ---
 
