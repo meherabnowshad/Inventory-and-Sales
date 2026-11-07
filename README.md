@@ -131,7 +131,7 @@ Key configuration parameters inside `backend/.env`:
 ```ini
 PORT=5001
 NODE_ENV=development
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/inventory_sales_db?schema=public"
+DATABASE_URL="postgresql://smartmart:smartmart_dev@localhost:5432/inventory_sales_db?schema=public"
 CORS_ORIGIN=http://localhost:5173
 JWT_SECRET=super_secret_jwt_dev_key_change_in_production_32chars
 ```
