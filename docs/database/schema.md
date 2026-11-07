@@ -541,16 +541,16 @@ The main SRS section 5 and the engineering DDL v0.3 differ on these points. This
 
 | # | Point | Section 5 (this doc) | DDL v0.3 | Decision |
 |---|---|---|---|---|
-| 1 | Roles | `roles` table + `users.role_id` FK | Enum `user_role` on `users.role` | |
-| 2 | Idempotency | `sales_invoices.idempotency_key` column | Separate `idempotency_keys` table, also used by returns (FR-RET-06) | |
-| 3 | Sessions | No table | `refresh_tokens` table (FR-AUTH-02) | |
-| 4 | User name column | `name` | `full_name`, plus `must_reset_pw`, `failed_logins`, `locked_until` | |
-| 5 | Status and type lists | `VARCHAR` + CHECK | PostgreSQL `ENUM` types | |
-| 6 | `customers.created_by` | Required (every business table) | Not present | |
-| 7 | `payment_method` on confirm | Optional (FR-SAL-10 is *Should*) | Required by the confirm CHECK | |
-| 8 | SKU lock and append-only triggers | Proposed here | Not in the DDL (REVOKE only) | |
-| 9 | Phone format | "11 digits starting 01" | Regex `^01[3-9][0-9]{8}$` (stricter) | |
-| 10 | Audit columns on line tables | "Every business table" | Not on line tables | |
+| 1 | Roles | `roles` table + `users.role_id` FK | Enum `user_role` on `users.role` | as per section 5 |
+| 2 | Idempotency | `sales_invoices.idempotency_key` column | Separate `idempotency_keys` table, also used by returns (FR-RET-06) | as per section 5 |
+| 3 | Sessions | No table | `refresh_tokens` table (FR-AUTH-02) | as per section 5 |
+| 4 | User name column | `name` | `full_name`, plus `must_reset_pw`, `failed_logins`, `locked_until` | as per section 5 |
+| 5 | Status and type lists | `VARCHAR` + CHECK | PostgreSQL `ENUM` types | as per section 5 |
+| 6 | `customers.created_by` | Required (every business table) | Not present | as per section 5 |
+| 7 | `payment_method` on confirm | Optional (FR-SAL-10 is *Should*) | Required by the confirm CHECK | as per section 5 |
+| 8 | SKU lock and append-only triggers | Proposed here | Not in the DDL (REVOKE only) | as per section 5 |
+| 9 | Phone format | "11 digits starting 01" | Regex `^01[3-9][0-9]{8}$` (stricter) | as per section 5 |
+| 10 | Audit columns on line tables | "Every business table" | Not on line tables | as per section 5 |
 | 11 | `ref_id` for adjustments | Not defined | Not defined | Proposed: `audit_log.id` (section 3.2) |
 
 ---
