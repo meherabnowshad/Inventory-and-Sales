@@ -539,6 +539,7 @@ Run as `smartmart_app` against a seeded database. Each statement must fail.
 
 The main SRS section 5 and the engineering DDL v0.3 differ on these points. This document follows section 5, as IMS-02 asks; the BA and Dev 2 decide before IMS-04 writes the migration.
 
+
 | #   | Point                             | Section 5 (this doc)                    | DDL v0.3                                                            | Decision                               |
 | --- | --------------------------------- | --------------------------------------- | ------------------------------------------------------------------- | -------------------------------------- |
 | 1   | Roles                             | `roles` table + `users.role_id` FK      | Enum `user_role` on `users.role`                                    |                                        |
@@ -552,6 +553,7 @@ The main SRS section 5 and the engineering DDL v0.3 differ on these points. This
 | 9   | Phone format                      | "11 digits starting 01"                 | Regex `^01[3-9][0-9]{8}$` (stricter)                                |                                        |
 | 10  | Audit columns on line tables      | "Every business table"                  | Not on line tables                                                  |                                        |
 | 11  | `ref_id` for adjustments          | Not defined                             | Not defined                                                         | Proposed: `audit_log.id` (section 3.2) |
+
 
 ---
 
