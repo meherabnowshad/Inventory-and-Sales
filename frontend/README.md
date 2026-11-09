@@ -5,37 +5,28 @@ Non-Functional Requirements covered: **NFR-SEC-03**, **NFR-MNT-01**, **NFR-OPS-0
 
 ## Overview
 
-React 18 single-page application built with Vite, TypeScript, Tailwind CSS, Lucide icons, and React Router v6.
+React 18 single-page application built with Vite, TypeScript, Tailwind CSS, Lucide icons, Vitest + React Testing Library, and React Router v6.
 
-## Quick Start (Single Command)
+## Setup
 
-```bash
-# 1. Install dependencies
-npm install
+Use the repository's [README](../README.md) as the single setup guide for the frontend, backend, and PostgreSQL database. The frontend can also run independently; from the repository root, run `npm install`, `npm run setup:env`, then `npm run dev:frontend`.
 
-# 2. Copy environment file if not already copied
-cp -n .env.example .env
+## Frontend scripts
 
-# 3. Start development server
-npm run dev
-```
+Run these commands from the repository root with `--workspace=frontend`, or from `frontend/` without the workspace option.
 
-The Vite development server will start on `http://localhost:5173`.
+- `npm run dev` — Starts Vite with Hot Module Replacement.
+- `npm run build` — Type-checks and builds optimized production assets.
+- `npm run test` — Runs Vitest component and unit tests.
+- `npm run preview` — Previews the production build.
+- `npm run lint` — Runs ESLint on `src/`.
+- `npm run format` — Formats frontend source files with Prettier.
+- `npm run format:check` — Checks formatting without changing files.
 
-## Available Scripts
+## Routes
 
-- `npm run dev` — Starts Vite dev server with Hot Module Replacement (HMR).
-- `npm run build` — Compiles TypeScript and builds optimized production bundles to `dist/`.
-- `npm run preview` — Locally previews production build.
-- `npm run lint` — Runs ESLint across `src/`.
-- `npm run lint:fix` — Fixes auto-fixable lint issues.
-- `npm run format` — Formats source files using Prettier.
-- `npm run format:check` — Checks formatting using Prettier.
-
-## Routes Configured
-
-- `/` — Overview Dashboard with high-level KPIs and backend connectivity indicator.
-- `/inventory` — Inventory management view with search filters and product catalog table.
-- `/sales` — Point of sale transaction history and order records.
-- `/login` — User authentication skeleton with Role-Based Access Control hints.
-- `*` (404) — Not Found fallback route.
+- `/` — Overview dashboard with baseline KPIs and backend connectivity indicator.
+- `/inventory` — Inventory view with stock status, search, and empty states.
+- `/sales` — Sales transaction history.
+- `/login` — Authentication skeleton.
+- `*` — Not Found fallback.
