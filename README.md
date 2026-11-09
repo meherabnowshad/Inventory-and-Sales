@@ -299,16 +299,16 @@ Each team member follows steps 1 to 6 on their local machine and records their v
 
 ## ⚙️ Backend Service
 
-The backend is an Express.js REST API written in TypeScript with Prisma ORM for PostgreSQL, Helmet for HTTP security headers, CORS, Morgan request logging, and strict ESLint/Prettier formatting standards.
+The backend is a NestJS 10 REST API written in TypeScript with Prisma ORM 5 (pinned to 5.22.x) for PostgreSQL, CORS, strict ESLint, and Prettier formatting standards per SRS Engineering Addendum (v0.3).
 
 ### Backend Internal Architecture
 
-- `backend/src/server.ts` — Server entry point and graceful shutdown handlers.
-- `backend/src/app.ts` — Express application configuration, middlewares, and route mounting.
-- `backend/src/config/` — Typed environment variable validation (`env.ts`) and Prisma client singleton (`prisma.ts`).
-- `backend/src/controllers/` — Route controllers (e.g. `health.controller.ts`).
-- `backend/src/routes/` — Modular REST route definitions (`health.routes.ts`, `inventory.routes.ts`, `sales.routes.ts`).
-- `backend/src/middlewares/` — Centralized error handler and Morgan request logger.
+- `backend/src/main.ts` — NestJS bootstrap entry point, global `/api` prefix, and CORS configuration.
+- `backend/src/app.module.ts` — Root module importing ConfigModule, PrismaModule, HealthModule, InventoryModule, and SalesModule.
+- `backend/src/prisma/` — Global PrismaService (lifecycle connect/disconnect) and PrismaModule.
+- `backend/src/health/` — HealthController providing `/api/health` status for liveness and database checks.
+- `backend/src/inventory/` — InventoryController and InventoryService querying products via Prisma.
+- `backend/src/sales/` — SalesController and SalesService querying invoices via Prisma.
 - `backend/prisma/schema.prisma` — PostgreSQL relational data model (14 tables per SRS Section 5).
 - `backend/prisma/migrations/` — SQL migration scripts (`migration.sql`) and down scripts (`down.sql`).
 - `backend/prisma/seed.ts`, `backend/prisma/seed-data.ts` — Idempotent demo data loader.
@@ -317,19 +317,19 @@ The backend is an Express.js REST API written in TypeScript with Prisma ORM for 
 
 Commands can be run from repository root using `--workspace=backend`, or directly within the `backend/` directory:
 
-| Command                   | Root Workspace Invocation                     | Description                                                    |
-| :------------------------ | :-------------------------------------------- | :------------------------------------------------------------- |
-| `npm run dev`             | `npm run dev:backend`                         | Starts backend with hot-reload via `tsx watch` on port `5001`. |
-| `npm run build`           | `npm run build:backend`                       | Compiles TypeScript into `backend/dist/`.                      |
-| `npm run start`           | `npm run start --workspace=backend`           | Executes compiled production build from `dist/server.js`.      |
-| `npm run lint`            | `npm run lint --workspace=backend`            | Runs ESLint across `backend/src/`.                             |
-| `npm run lint:fix`        | `npm run lint:fix --workspace=backend`        | Fixes auto-fixable lint issues in backend.                     |
-| `npm run format`          | `npm run format --workspace=backend`          | Formats backend source files with Prettier.                    |
-| `npm run prisma:generate` | `npm run prisma:generate --workspace=backend` | Generates latest Prisma Client.                                |
-| `npm run db:migrate`      | `npm run db:migrate --workspace=backend`      | Applies pending Prisma migrations (`prisma migrate deploy`).   |
-| `npm run db:seed`         | `npm run db:seed --workspace=backend`         | Runs idempotent seed loader (`prisma db seed`).                |
-| `npm run db:setup`        | `npm run db:setup --workspace=backend`        | Runs migrations and seeds in one command.                      |
-| `npm run db:down`         | `npm run db:down --workspace=backend`         | Drops tables with `down.sql` (use only in local dev).          |
+| Command                   | Root Workspace Invocation                     | Description                                                           |
+| :------------------------ | :-------------------------------------------- | :-------------------------------------------------------------------- |
+| `npm run dev`             | `npm run dev:backend`                         | Starts backend with hot-reload via Nest CLI (`nest start --watch`).   |
+| `npm run build`           | `npm run build:backend`                       | Compiles TypeScript into `backend/dist/` via Nest CLI (`nest build`). |
+| `npm run start`           | `npm run start --workspace=backend`           | Executes compiled production build from `dist/main.js`.               |
+| `npm run lint`            | `npm run lint --workspace=backend`            | Runs ESLint across `backend/src/`.                                    |
+| `npm run lint:fix`        | `npm run lint:fix --workspace=backend`        | Fixes auto-fixable lint issues in backend.                            |
+| `npm run format`          | `npm run format --workspace=backend`          | Formats backend source files with Prettier.                           |
+| `npm run prisma:generate` | `npm run prisma:generate --workspace=backend` | Generates latest Prisma Client.                                       |
+| `npm run db:migrate`      | `npm run db:migrate --workspace=backend`      | Applies pending Prisma migrations (`prisma migrate deploy`).          |
+| `npm run db:seed`         | `npm run db:seed --workspace=backend`         | Runs idempotent seed loader (`prisma db seed`).                       |
+| `npm run db:setup`        | `npm run db:setup --workspace=backend`        | Runs migrations and seeds in one command.                             |
+| `npm run db:down`         | `npm run db:down --workspace=backend`         | Drops tables with `down.sql` (use only in local dev).                 |
 
 ---
 
