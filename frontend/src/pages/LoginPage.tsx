@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, User, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
+import { Lock, User, ShieldCheck, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { DEMO_USERS, DEMO_PASSWORD } from '../services/api';
 
@@ -11,6 +11,7 @@ export function LoginPage() {
 
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{
     usernameOrEmail?: string;
     password?: string;
@@ -159,7 +160,7 @@ export function LoginPage() {
                 <input
                   id="login-password"
                   name="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => {
@@ -170,12 +171,24 @@ export function LoginPage() {
                   }}
                   placeholder="••••••••"
                   aria-invalid={!!fieldErrors.password}
-                  className={`w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  className={`w-full pl-9 pr-10 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
                     fieldErrors.password
                       ? 'border-rose-400 focus:ring-rose-500 bg-rose-50/30'
                       : 'border-zinc-200 focus:border-zinc-800 focus:ring-zinc-800 bg-zinc-50/50 focus:bg-white text-zinc-900'
                   }`}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 focus:outline-none focus:text-zinc-600 transition-colors cursor-pointer"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4 text-zinc-500" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-zinc-500" />
+                  )}
+                </button>
               </div>
               {fieldErrors.password && (
                 <p className="mt-1 text-xs text-rose-600 font-medium">{fieldErrors.password}</p>

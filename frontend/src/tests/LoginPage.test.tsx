@@ -35,7 +35,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     renderLoginPage();
 
     const usernameInput = screen.getByLabelText(/username or email/i) as HTMLInputElement;
-    const passwordInput = screen.getByLabelText(/password/i) as HTMLInputElement;
+    const passwordInput = screen.getByLabelText(/^password$/i) as HTMLInputElement;
 
     expect(usernameInput).toBeInTheDocument();
     expect(usernameInput.value).toBe('');
@@ -58,7 +58,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     renderLoginPage();
 
     const usernameInput = screen.getByLabelText(/username or email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByLabelText(/^password$/i);
     const submitBtn = screen.getByRole('button', { name: /sign in/i });
 
     // Enter a malformed email (has @ but invalid format)
@@ -73,7 +73,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     renderLoginPage();
 
     const usernameInput = screen.getByLabelText(/username or email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByLabelText(/^password$/i);
     const submitBtn = screen.getByRole('button', { name: /sign in/i });
 
     // A plain username (no @) should not trigger email format validation
@@ -91,7 +91,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     renderLoginPage();
 
     const usernameInput = screen.getByLabelText(/username or email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByLabelText(/^password$/i);
     const submitBtn = screen.getByRole('button', { name: /sign in/i });
 
     fireEvent.change(usernameInput, { target: { value: 'sadia' } });
@@ -105,7 +105,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     renderLoginPage();
 
     const usernameInput = screen.getByLabelText(/username or email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByLabelText(/^password$/i);
     const submitBtn = screen.getByRole('button', { name: /sign in/i });
 
     // Submit invalid credentials
@@ -122,7 +122,7 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     renderLoginPage();
 
     const usernameInput = screen.getByLabelText(/username or email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByLabelText(/^password$/i);
     const submitBtn = screen.getByRole('button', { name: /sign in/i });
 
     // Login as Rafi (Sales Staff)
@@ -143,9 +143,24 @@ describe('LoginPage Component (IMS-06.1 / FR-AUTH-01)', () => {
     fireEvent.click(sadiaBtn);
 
     const usernameInput = screen.getByLabelText(/username or email/i) as HTMLInputElement;
-    const passwordInput = screen.getByLabelText(/password/i) as HTMLInputElement;
+    const passwordInput = screen.getByLabelText(/^password$/i) as HTMLInputElement;
 
     expect(usernameInput.value).toBe('sadia');
     expect(passwordInput.value).toBe(api.DEMO_PASSWORD);
+  });
+
+  it('toggles password visibility when clicking the eye icon', () => {
+    renderLoginPage();
+
+    const passwordInput = screen.getByLabelText(/^password$/i) as HTMLInputElement;
+    expect(passwordInput.type).toBe('password');
+
+    const toggleBtn = screen.getByRole('button', { name: /show password/i });
+    fireEvent.click(toggleBtn);
+    expect(passwordInput.type).toBe('text');
+
+    const hideBtn = screen.getByRole('button', { name: /hide password/i });
+    fireEvent.click(hideBtn);
+    expect(passwordInput.type).toBe('password');
   });
 });
