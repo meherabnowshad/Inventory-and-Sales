@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -8,6 +8,14 @@ async function bootstrap() {
 
   // Set global API prefix: /api
   app.setGlobalPrefix('api');
+
+  // Request Validation Pipe (DTO enforcement)
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  );
 
   // CORS Configuration
   const allowedOrigins = process.env.CORS_ORIGIN || 'http://localhost:5173';
