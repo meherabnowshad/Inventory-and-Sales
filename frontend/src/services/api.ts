@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AuthResponse, LoginCredentials } from '../types/auth';
+import { AuthResponse, LoginCredentials, AuthUser } from '../types/auth';
 
 // Defaults to '/api' so Vite proxy in vite.config.ts forwards to http://localhost:5001/api without CORS
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -153,6 +153,22 @@ export async function logoutApi(): Promise<void> {
   } finally {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
+  }
+}
+
+/**
+ * Validates the current token against backend /auth/me (IMS-05.2)
+ * If the token has been revoked, triggers 401 unauthorized cleanup.
+ */
+export async function getProfileApi(): Promise<AuthUser | null> {
+  try {
+    const response = await apiClient.get<AuthUser>('/auth/me');
+    return response.data;
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response && error.response.status === 401) {
+      triggerUnauthorized();
+    }
+    return null;
   }
 }
 
