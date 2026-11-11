@@ -15,6 +15,7 @@ export const apiClient = axios.create({
 // Storage keys
 export const TOKEN_STORAGE_KEY = 'smartmart_auth_token';
 export const USER_STORAGE_KEY = 'smartmart_auth_user';
+export const REFRESH_TOKEN_STORAGE_KEY = 'smartmart_refresh_token';
 
 // Listeners for 401 Unauthorized events (IMS-06.2)
 type UnauthorizedHandler = () => void;
@@ -31,6 +32,7 @@ export function triggerUnauthorized(): void {
   // Clear stored tokens
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(USER_STORAGE_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   unauthorizedHandlers.forEach((handler) => handler());
 }
 
@@ -46,10 +48,82 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// Response Interceptor: Catch 401 Unauthorized and notify listeners
+// Response Interceptor: Catch 401 Unauthorized and auto-refresh session (IMS-05.3 / FR-AUTH-03)
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (error: unknown) => void;
+}> = [];
+
+const processQueue = (error: unknown, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else if (token) {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    // Don't intercept refresh or login calls
+    if (
+      error.response &&
+      error.response.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/login') &&
+      !originalRequest.url?.includes('/auth/refresh')
+    ) {
+      const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+      if (!refreshToken) {
+        triggerUnauthorized();
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return apiClient(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshResponse = await axios.post<AuthResponse>(
+          `${API_BASE_URL}/auth/refresh`,
+          { refreshToken },
+        );
+        const { token, accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+        const finalAccessToken = accessToken || token;
+
+        localStorage.setItem(TOKEN_STORAGE_KEY, finalAccessToken);
+        if (newRefreshToken) {
+          localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, newRefreshToken);
+        }
+
+        processQueue(null, finalAccessToken);
+        originalRequest.headers.Authorization = `Bearer ${finalAccessToken}`;
+        return apiClient(originalRequest);
+      } catch (refreshErr) {
+        processQueue(refreshErr, null);
+        triggerUnauthorized();
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
     if (error.response && error.response.status === 401) {
       triggerUnauthorized();
     }
@@ -118,6 +192,9 @@ export async function loginApi(credentials: LoginCredentials): Promise<AuthRespo
       usernameOrEmail: credentials.usernameOrEmail.trim(),
       password: credentials.password,
     });
+    if (response.data.refreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, response.data.refreshToken);
+    }
     return response.data;
   } catch (error: unknown) {
     // If backend returns a deliberate 401/400 error response from real API
@@ -145,14 +222,41 @@ export async function loginApi(credentials: LoginCredentials): Promise<AuthRespo
   }
 }
 
-export async function logoutApi(): Promise<void> {
+export async function refreshSessionApi(): Promise<AuthResponse | null> {
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  if (!refreshToken) return null;
   try {
-    await apiClient.post('/auth/logout');
+    const res = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+    const { token, accessToken, refreshToken: newRefreshToken, user } = res.data;
+    const finalToken = accessToken || token;
+    localStorage.setItem(TOKEN_STORAGE_KEY, finalToken);
+    if (user) {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    }
+    if (newRefreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, newRefreshToken);
+    }
+    return res.data;
+  } catch {
+    triggerUnauthorized();
+    return null;
+  }
+}
+
+export async function logoutApi(): Promise<void> {
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  try {
+    if (refreshToken) {
+      await apiClient.post('/auth/logout', { refreshToken });
+    } else {
+      await apiClient.post('/auth/logout');
+    }
   } catch {
     // Graceful fallback for offline / stub
   } finally {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   }
 }
 
