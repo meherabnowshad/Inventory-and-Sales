@@ -26,7 +26,7 @@ describe('AuthGuard (IMS-05.2 / FR-AUTH-02)', () => {
     return { context, request };
   };
 
-  it('allows access and attaches user to request for valid bearer token', () => {
+  it('allows access and attaches user to request for valid bearer token', async () => {
     const mockUser = {
       id: 1,
       name: 'Sadia Rahman',
@@ -34,39 +34,39 @@ describe('AuthGuard (IMS-05.2 / FR-AUTH-02)', () => {
       email: 'sadia@smartmart.local',
       role: 'Administrator',
     };
-    mockAuthService.validateToken.mockReturnValue(mockUser);
+    mockAuthService.validateToken.mockResolvedValue(mockUser);
 
     const { context, request } = createMockContext('Bearer valid_token_123');
 
-    const result = authGuard.canActivate(context);
+    const result = await authGuard.canActivate(context);
 
     expect(result).toBe(true);
     expect(mockAuthService.validateToken).toHaveBeenCalledWith('valid_token_123');
     expect(request.user).toEqual(mockUser);
   });
 
-  it('blocks access with 401 when token is revoked (Done when: Old token gets 401)', () => {
-    mockAuthService.validateToken.mockImplementation(() => {
-      throw new UnauthorizedException('Token has been revoked');
-    });
+  it('blocks access with 401 when token is revoked (Done when: Old token gets 401)', async () => {
+    mockAuthService.validateToken.mockRejectedValue(
+      new UnauthorizedException('Token has been revoked'),
+    );
 
     const { context } = createMockContext('Bearer old_revoked_token_123');
 
-    expect(() => authGuard.canActivate(context)).toThrow(UnauthorizedException);
-    expect(() => authGuard.canActivate(context)).toThrow('Token has been revoked');
+    await expect(authGuard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    await expect(authGuard.canActivate(context)).rejects.toThrow('Token has been revoked');
   });
 
-  it('blocks access with 401 when authorization header is missing', () => {
+  it('blocks access with 401 when authorization header is missing', async () => {
     const { context } = createMockContext(undefined);
 
-    expect(() => authGuard.canActivate(context)).toThrow(UnauthorizedException);
-    expect(() => authGuard.canActivate(context)).toThrow('Authorization header is missing');
+    await expect(authGuard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    await expect(authGuard.canActivate(context)).rejects.toThrow('Authorization header is missing');
   });
 
-  it('blocks access with 401 when scheme is not Bearer', () => {
+  it('blocks access with 401 when scheme is not Bearer', async () => {
     const { context } = createMockContext('Basic dXNlcjpwYXNz');
 
-    expect(() => authGuard.canActivate(context)).toThrow(UnauthorizedException);
-    expect(() => authGuard.canActivate(context)).toThrow('Invalid authorization scheme');
+    await expect(authGuard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    await expect(authGuard.canActivate(context)).rejects.toThrow('Invalid authorization scheme');
   });
 });

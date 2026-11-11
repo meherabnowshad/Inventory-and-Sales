@@ -5,7 +5,7 @@ import { AuthService } from '../auth.service';
 export class AuthGuard implements CanActivate {
   constructor(private readonly authService: AuthService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
@@ -18,8 +18,8 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid authorization scheme, Bearer token required');
     }
 
-    // validateToken verifies active status and throws 401 if revoked or invalid
-    const user = this.authService.validateToken(token);
+    // validateToken verifies active status in PostgreSQL and throws 401 if revoked or invalid
+    const user = await this.authService.validateToken(token);
     request.user = user;
     return true;
   }

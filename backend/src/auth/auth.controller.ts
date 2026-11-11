@@ -38,7 +38,7 @@ export class AuthController {
     if (!authHeader) {
       throw new UnauthorizedException('Authorization header is required for logout');
     }
-    this.authService.revokeToken(authHeader);
+    await this.authService.revokeToken(authHeader);
     return { message: 'Logged out successfully' };
   }
 
