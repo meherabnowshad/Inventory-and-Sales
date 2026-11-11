@@ -1,5 +1,5 @@
 // Prisma schema for SmartMart Inventory & Sales Management System
-// Task: IMS-04.1 | Source: docs/database/schema.md (SRS section 5, 14 tables)
+// Task: IMS-04.1 | Source: docs/database/schema.md (SRS section 5, 14 tables; idempotency_keys added in IMS-02.4)
 //
 // Rules Prisma cannot express are added by hand in the migration SQL:
 // CHECK constraints, lower() unique indexes, partial indexes, generated
