@@ -6,9 +6,9 @@
 | **Author**   | Dev 1 · Md. Rashadul Islam                                      |
 | **Reviewer** | Dev 2 · MD Meherab Hossain Nowshad                              |
 | **Source**   | SRS Group 1 (SmartMart), main SRS section 5 "Data requirements" |
-| **Status**   | Draft for review (IMS-02.4)                                     |
+| **Status**   | BA review answered, changes applied (IMS-02.4)                  |
 
-The 14 tables exactly as SRS section 5 lists them, with their key fields and links. Keys, checks and the ledger rules are in [schema.md](./schema.md). Editable source: [erd.dbml](./erd.dbml) (open it in dbdiagram.io).
+The 14 tables exactly as SRS section 5 lists them, plus the helper table `idempotency_keys` (BA decision, IMS-02.4), with their key fields and links. Keys, checks and the ledger rules are in [schema.md](./schema.md). Editable source: [erd.dbml](./erd.dbml) (open it in dbdiagram.io).
 
 ![SmartMart ER diagram](./erd.png)
 
@@ -26,8 +26,11 @@ erDiagram
     varchar username UK
     varchar email UK
     text password_hash
-    int role FK
+    smallint role_id FK
     boolean is_active
+    int failed_logins ">= 0, default 0"
+    timestamp first_failed_at "start of 15-minute window"
+    timestamp locked_until "login refused until"
   }
   categories {
     int id PK
@@ -92,7 +95,7 @@ erDiagram
     varchar payment_method
     bigint confirmed_by FK
     timestamp confirmed_at
-    varchar idempotency_key UK
+    uuid idempotency_key UK
   }
   sales_invoice_lines {
     bigint id PK
@@ -142,6 +145,14 @@ erDiagram
     bigint user_id FK
     timestamp created_at "append-only"
   }
+  idempotency_keys {
+    bigint user_id PK, FK
+    uuid key PK "Idempotency-Key header"
+    char request_hash "64 characters"
+    smallint response_code "NULL until finished"
+    jsonb response_body
+    timestamp created_at
+  }
 
   roles ||--o{ users : "assigned to"
   categories ||--o{ products : "contains"
@@ -160,6 +171,7 @@ erDiagram
   products ||--o{ stock_movements : "tracked by"
   users ||--o{ stock_movements : "records"
   users ||--o{ audit_log : "is logged in"
+  users ||--o{ idempotency_keys : "owns"
   purchase_orders ||..o{ stock_movements : "receipt ref"
   sales_invoices ||..o{ stock_movements : "sale ref"
   sales_returns ||..o{ stock_movements : "return ref"
@@ -172,7 +184,7 @@ erDiagram
 - Dotted lines: logical link through `stock_movements.ref_type` + `ref_id`, not a real foreign key.
 - `created_at`, `updated_at` and `created_by` are on every business table (section 5) but are left out of the diagram to keep it readable.
 
-## The 14 tables
+## The 15 tables
 
 | #   | Table                | Links to                           |
 | --- | -------------------- | ---------------------------------- |
@@ -190,3 +202,4 @@ erDiagram
 | 12  | sales_return_lines   | sales_returns, sales_invoice_lines |
 | 13  | stock_movements      | products, users                    |
 | 14  | audit_log            | users                              |
+| 15  | idempotency_keys     | users                              |
