@@ -18,7 +18,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:setup": "prisma migrate deploy && prisma db seed",
-    "db:down": "prisma db execute --file prisma/migrations/20261105000000_init_schema/down.sql --schema prisma/schema.prisma"
+    "db:down": "node scripts/db-down.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
