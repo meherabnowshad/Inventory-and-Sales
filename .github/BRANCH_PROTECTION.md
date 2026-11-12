@@ -40,6 +40,7 @@ Enable the following checkboxes:
     - `Code Formatting & Secret Audit (NFR-SEC-03, NFR-MNT-01)`
     - `Backend Lint & Typecheck (NFR-MNT-01, NFR-OPS-01)`
     - `Frontend Lint & Build (NFR-MNT-01, NFR-OPS-01)`
+    - `API Tests against Test Database (NFR-OPS-01)`
 - [x] **Do not allow bypassing the above settings**
   - Enforce rules for repository administrators as well.
 - [x] **Block force pushes** (prevents `git push --force`).

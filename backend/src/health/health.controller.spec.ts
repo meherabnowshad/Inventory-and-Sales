@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HealthController } from './health.controller';
 import { PrismaService } from '../prisma/prisma.service';
-import { Response } from 'express';
+import type { Response } from 'express';
 
 describe('HealthController (NFR-OPS-01)', () => {
   let controller: HealthController;
