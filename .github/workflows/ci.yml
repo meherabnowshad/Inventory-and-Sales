@@ -4,10 +4,9 @@ on:
   push:
     branches:
       - main
+      - master
       - Sprint-1
   pull_request:
-    branches:
-      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -62,6 +61,9 @@ jobs:
 
       - name: Lint Backend Code
         run: npm run lint --workspace=backend
+
+      - name: Test Backend
+        run: npm run test:backend
 
       - name: Compile Backend TypeScript
         run: npm run build:backend
