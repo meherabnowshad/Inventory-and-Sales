@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { Algorithm, hash } from '@node-rs/argon2';
-import { AuthService, ACCESS_TOKEN_TTL_SEC, REFRESH_TOKEN_TTL_MS } from './auth.service';
+import {
+  AuthService,
+  ACCESS_TOKEN_TTL_SEC,
+  REFRESH_TOKEN_TTL_MS,
+  MAX_FAILED_LOGINS,
+  THROTTLE_WINDOW_MS,
+} from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { TemporarilyLockedException } from './exceptions/temporarily-locked.exception';
 
 interface MockRefreshTokenRow {
   id: bigint;
@@ -13,13 +20,25 @@ interface MockRefreshTokenRow {
   revokedAt: Date | null;
 }
 
-describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR-AUTH-03, FR-AUTH-04)', () => {
+describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR-AUTH-05)', () => {
   let authService: AuthService;
   let sampleArgonHash: string;
   let storedTokens: Map<string, MockRefreshTokenRow>;
   let nextTokenId: bigint;
 
-  const mockUser = {
+  const mockUser: {
+    id: bigint;
+    name: string;
+    username: string;
+    email: string;
+    passwordHash: string;
+    roleId: number;
+    isActive: boolean;
+    failedLogins: number;
+    firstFailedAt: Date | null;
+    lockedUntil: Date | null;
+    role: { id: number; name: string };
+  } = {
     id: BigInt(1),
     name: 'Sadia Rahman',
     username: 'sadia',
@@ -27,6 +46,9 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
     passwordHash: '',
     roleId: 1,
     isActive: true,
+    failedLogins: 0,
+    firstFailedAt: null,
+    lockedUntil: null,
     role: { id: 1, name: 'Administrator' },
   };
 
@@ -34,6 +56,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
     user: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     refreshToken: {
       create: vi.fn(),
@@ -52,12 +75,26 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
     sampleArgonHash = await hash('Smart@1234', { algorithm: Algorithm.Argon2id });
     mockUser.passwordHash = sampleArgonHash;
     mockUser.isActive = true;
+    mockUser.failedLogins = 0;
+    mockUser.firstFailedAt = null;
+    mockUser.lockedUntil = null;
 
     mockPrisma.user.findFirst.mockResolvedValue(mockUser);
     mockPrisma.user.findUnique.mockImplementation(async ({ where }: { where: { id: bigint } }) => {
       if (where.id === mockUser.id) return mockUser;
       return null;
     });
+    mockPrisma.user.update.mockImplementation(
+      async ({
+        data,
+      }: {
+        where: { id: bigint };
+        data: Partial<{ failedLogins: number; firstFailedAt: Date | null; lockedUntil: Date | null }>;
+      }) => {
+        Object.assign(mockUser, data);
+        return mockUser;
+      },
+    );
 
     mockPrisma.refreshToken.create.mockImplementation(
       async ({ data }: { data: { userId: bigint; tokenHash: string; expiresAt: Date } }) => {
@@ -422,6 +459,116 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
     it('rejects empty or missing token with 401', async () => {
       await expect(authService.validateToken('')).rejects.toThrow(UnauthorizedException);
       await expect(authService.revokeToken('')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('IMS-05.4: Failed-login throttling (FR-AUTH-05 - Done when: Sixth try in 15 min is blocked)', () => {
+    it('blocks the 6th login attempt with HTTP 429 TEMPORARILY_LOCKED even with the right password', async () => {
+      const wrongDto = new LoginDto();
+      wrongDto.usernameOrEmail = 'sadia';
+      wrongDto.password = 'WrongPassword999';
+
+      // First 5 failures within 15 minutes return generic 401
+      for (let i = 1; i <= MAX_FAILED_LOGINS; i++) {
+        await expect(authService.validateAndLogin(wrongDto)).rejects.toThrow(UnauthorizedException);
+        expect(mockUser.failedLogins).toBe(i);
+      }
+
+      // 5th failure sets lockedUntil ~15 minutes ahead
+      expect(mockUser.lockedUntil).toBeInstanceOf(Date);
+      expect(mockUser.firstFailedAt).toBeInstanceOf(Date);
+
+      // 6th attempt with the RIGHT password must be blocked with 429 TEMPORARILY_LOCKED
+      const rightDto = new LoginDto();
+      rightDto.usernameOrEmail = 'sadia';
+      rightDto.password = 'Smart@1234';
+
+      try {
+        await authService.validateAndLogin(rightDto);
+        expect.fail('Expected 6th attempt to throw TemporarilyLockedException');
+      } catch (err) {
+        expect(err).toBeInstanceOf(TemporarilyLockedException);
+        const lockedErr = err as TemporarilyLockedException;
+        expect(lockedErr.getStatus()).toBe(429);
+        expect(lockedErr.retryAfter).toBeGreaterThan(890);
+        expect(lockedErr.retryAfter).toBeLessThanOrEqual(900);
+        expect(lockedErr.getResponse()).toMatchObject({
+          status: 429,
+          code: 'TEMPORARILY_LOCKED',
+        });
+      }
+    });
+
+    it('resets failedLogins, firstFailedAt, and lockedUntil upon successful login', async () => {
+      const wrongDto = new LoginDto();
+      wrongDto.usernameOrEmail = 'sadia';
+      wrongDto.password = 'WrongPassword999';
+
+      // 3 failed attempts
+      for (let i = 0; i < 3; i++) {
+        await expect(authService.validateAndLogin(wrongDto)).rejects.toThrow(UnauthorizedException);
+      }
+      expect(mockUser.failedLogins).toBe(3);
+      expect(mockUser.firstFailedAt).not.toBeNull();
+
+      // 4th attempt succeeds with right password
+      const rightDto = new LoginDto();
+      rightDto.usernameOrEmail = 'sadia';
+      rightDto.password = 'Smart@1234';
+      const result = await authService.validateAndLogin(rightDto);
+
+      expect(result.accessToken).toBeDefined();
+      expect(mockUser.failedLogins).toBe(0);
+      expect(mockUser.firstFailedAt).toBeNull();
+      expect(mockUser.lockedUntil).toBeNull();
+    });
+
+    it('starts a fresh 15-minute window if 15 minutes passed since firstFailedAt', async () => {
+      // Simulate 4 failures 16 minutes ago
+      mockUser.failedLogins = 4;
+      mockUser.firstFailedAt = new Date(Date.now() - THROTTLE_WINDOW_MS - 60_000);
+      mockUser.lockedUntil = null;
+
+      const wrongDto = new LoginDto();
+      wrongDto.usernameOrEmail = 'sadia';
+      wrongDto.password = 'WrongPassword999';
+
+      await expect(authService.validateAndLogin(wrongDto)).rejects.toThrow(UnauthorizedException);
+
+      // Should reset counter to 1 instead of locking at 5
+      expect(mockUser.failedLogins).toBe(1);
+      expect(mockUser.lockedUntil).toBeNull();
+    });
+
+    it('allows login again once the 15-minute lockout period expires', async () => {
+      // Simulate lock that expired 1 second ago
+      mockUser.failedLogins = 5;
+      mockUser.firstFailedAt = new Date(Date.now() - THROTTLE_WINDOW_MS - 5000);
+      mockUser.lockedUntil = new Date(Date.now() - 1000);
+
+      const rightDto = new LoginDto();
+      rightDto.usernameOrEmail = 'sadia';
+      rightDto.password = 'Smart@1234';
+
+      const result = await authService.validateAndLogin(rightDto);
+      expect(result.accessToken).toBeDefined();
+      expect(mockUser.failedLogins).toBe(0);
+      expect(mockUser.firstFailedAt).toBeNull();
+      expect(mockUser.lockedUntil).toBeNull();
+    });
+
+    it('starts a fresh window on wrong password after an expired lockout instead of locking immediately', async () => {
+      mockUser.failedLogins = 5;
+      mockUser.firstFailedAt = new Date(Date.now() - THROTTLE_WINDOW_MS - 5000);
+      mockUser.lockedUntil = new Date(Date.now() - 1000);
+
+      const wrongDto = new LoginDto();
+      wrongDto.usernameOrEmail = 'sadia';
+      wrongDto.password = 'WrongPassword999';
+
+      await expect(authService.validateAndLogin(wrongDto)).rejects.toThrow(UnauthorizedException);
+      expect(mockUser.failedLogins).toBe(1);
+      expect(mockUser.lockedUntil).toBeNull();
     });
   });
 });

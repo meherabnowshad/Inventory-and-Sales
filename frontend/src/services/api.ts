@@ -197,9 +197,23 @@ export async function loginApi(credentials: LoginCredentials): Promise<AuthRespo
     }
     return response.data;
   } catch (error: unknown) {
-    // If backend returns a deliberate 401/400 error response from real API
-    if (axios.isAxiosError(error) && error.response && error.response.status === 401) {
-      throw new Error('Invalid username or password');
+    // If backend returns a deliberate 429/401/400 error response from real API, never fall back to mock
+    if (axios.isAxiosError(error) && error.response) {
+      if (error.response.status === 429) {
+        const data = error.response.data as { detail?: string; message?: string };
+        throw new Error(
+          data?.detail ||
+            data?.message ||
+            'Too many failed login attempts. Please try again in 15 minutes.',
+        );
+      }
+      if (error.response.status === 401) {
+        throw new Error('Invalid username or password');
+      }
+      if (error.response.status === 400) {
+        const msg = (error.response.data as { message?: string | string[] })?.message;
+        throw new Error(Array.isArray(msg) ? msg[0] : msg || 'Invalid login request');
+      }
     }
 
     // Sprint 1 Mock/Stub fallback (IMS-06.1 & Master Test Plan Section 2/9)

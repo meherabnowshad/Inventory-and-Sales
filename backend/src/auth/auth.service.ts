@@ -4,6 +4,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { verify } from '@node-rs/argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { TemporarilyLockedException } from './exceptions/temporarily-locked.exception';
 
 export interface AuthUserResponse {
   id: number;
@@ -42,6 +43,11 @@ export const ACCESS_TOKEN_TTL_SEC = 15 * 60;
 
 /** Refresh token lifetime: 8 hours / one work shift (FR-AUTH-03, NFR-SEC-05) */
 export const REFRESH_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+
+/** Failed-login throttle constants (FR-AUTH-05, IMS-05.4) */
+export const MAX_FAILED_LOGINS = 5;
+export const THROTTLE_WINDOW_MS = 15 * 60 * 1000;
+export const LOCK_DURATION_MS = 15 * 60 * 1000;
 
 const DEFAULT_JWT_SECRET = 'super_secret_jwt_dev_key_change_in_production_32chars';
 
@@ -89,10 +95,31 @@ export class AuthService {
       throw new UnauthorizedException('Invalid username or password');
     }
 
+    const now = new Date();
+
+    // FR-AUTH-05: Block login (even with right password) while account is temporarily locked
+    if (user.lockedUntil && user.lockedUntil > now) {
+      const retryAfterSeconds = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 1000);
+      throw new TemporarilyLockedException(retryAfterSeconds);
+    }
+
     // FR-AUTH-04: Argon2id password hash verification
     const isPasswordValid = await verify(user.passwordHash, dto.password);
     if (!isPasswordValid) {
+      await this.recordFailedLoginAttempt(user, now);
       throw new UnauthorizedException('Invalid username or password');
+    }
+
+    // IMS-02.4 point 4: Reset all three throttle columns on a successful login
+    if ((user.failedLogins ?? 0) > 0 || user.firstFailedAt != null || user.lockedUntil != null) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLogins: 0,
+          firstFailedAt: null,
+          lockedUntil: null,
+        },
+      });
     }
 
     const authUser: AuthUserResponse = {
@@ -449,5 +476,38 @@ export class AuthService {
   cleanToken(rawToken: string): string {
     if (!rawToken) return '';
     return rawToken.replace(/^Bearer\s+/i, '').trim();
+  }
+
+  /**
+   * IMS-05.4 (FR-AUTH-05): Records a failed login attempt inside a 15-minute window.
+   * Resets the window if 15 minutes have elapsed since `firstFailedAt` or a prior lock expired.
+   * Locks the account for 15 minutes once `failedLogins` reaches `MAX_FAILED_LOGINS` (5).
+   */
+  private async recordFailedLoginAttempt(
+    user: {
+      id: bigint;
+      failedLogins: number;
+      firstFailedAt: Date | null;
+      lockedUntil: Date | null;
+    },
+    now: Date,
+  ): Promise<void> {
+    const windowExpired =
+      !user.firstFailedAt || now.getTime() - user.firstFailedAt.getTime() >= THROTTLE_WINDOW_MS;
+    const priorLockExpired = user.lockedUntil != null && user.lockedUntil <= now;
+
+    const nextFailedLogins = windowExpired || priorLockExpired ? 1 : (user.failedLogins ?? 0) + 1;
+    const nextFirstFailedAt = windowExpired || priorLockExpired ? now : user.firstFailedAt;
+    const nextLockedUntil =
+      nextFailedLogins >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCK_DURATION_MS) : null;
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLogins: nextFailedLogins,
+        firstFailedAt: nextFirstFailedAt,
+        lockedUntil: nextLockedUntil,
+      },
+    });
   }
 }
