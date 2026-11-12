@@ -1,5 +1,5 @@
 // Prisma schema for SmartMart Inventory & Sales Management System
-// Task: IMS-04.1 | Source: docs/database/schema.md (SRS section 5, 14 tables)
+// Task: IMS-04.1 | Source: docs/database/schema.md (SRS section 5, 14 tables; idempotency_keys added in IMS-02.4)
 //
 // Rules Prisma cannot express are added by hand in the migration SQL:
 // CHECK constraints, lower() unique indexes, partial indexes, generated
@@ -37,6 +37,11 @@ model User {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy    BigInt?  @map("created_by")
 
+  // Login throttle (FR-AUTH-05, IMS-02.4 point 4); migration 20261111000000_users_login_throttle
+  failedLogins  Int       @default(0) @map("failed_logins")
+  firstFailedAt DateTime? @map("first_failed_at") @db.Timestamptz(6)
+  lockedUntil   DateTime? @map("locked_until") @db.Timestamptz(6)
+
   role    Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
   creator User?  @relation("UserCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   created User[] @relation("UserCreatedBy")
@@ -52,6 +57,7 @@ model User {
   returnsProcessed       SalesReturn[]   @relation("ReturnProcessedBy")
   stockMovements         StockMovement[]
   auditLogs              AuditLog[]
+  idempotencyKeys        IdempotencyKey[]
   refreshTokens          RefreshToken[]
 
   @@index([roleId], map: "users_role_id_idx")
@@ -313,4 +319,22 @@ model AuditLog {
   @@index([entity, entityId, createdAt(sort: Desc)], map: "audit_log_entity_time")
   @@index([userId, createdAt(sort: Desc)], map: "audit_log_user_time")
   @@map("audit_log")
+}
+
+// ------------------------------------------------------------ idempotency
+
+// Retry protection for receive, confirm, returns and adjustments (FR-SAL-07, FR-RET-06).
+// Added by migration 20261111000100_idempotency_keys (IMS-02.4 point 2).
+model IdempotencyKey {
+  userId       BigInt   @map("user_id")
+  key          String   @db.Uuid
+  requestHash  String   @map("request_hash") @db.Char(64)
+  responseCode Int?     @map("response_code") @db.SmallInt
+  responseBody Json?    @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([userId, key])
+  @@map("idempotency_keys")
 }
