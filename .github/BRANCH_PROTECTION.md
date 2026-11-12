@@ -1,8 +1,9 @@
-# GitHub Branch Protection Policy (`main`)
+# GitHub Branch Protection Policy (`main` & `master`)
 
-Subtask: **IMS-03.3**  
+Subtask: **IMS-03.3 & IMS-51.3**  
 Assignee: **Meherab (Dev 2)**  
-Acceptance Criteria: **Main needs a pull request and one approval**
+Covers: **NFR-OPS-01, NFR-MNT-01, NFR-SEC-03**  
+Acceptance Criteria: **Failing check blocks merge; Badge in README**
 
 ---
 
@@ -52,19 +53,37 @@ Enable the following checkboxes:
 
 ## 3. Automated Configuration via GitHub CLI (`gh`)
 
-If you have the `gh` CLI authenticated on your machine, you can apply these branch protection rules directly with this command:
+If you have the `gh` CLI authenticated on your machine, apply these branch protection rules directly for `main` and `master`:
 
 ```bash
+# Apply required status checks and protections to 'main'
 gh api --method PUT \
   -H "Accept: application/vnd.github+json" \
   /repos/:owner/:repo/branches/main/protection \
-  -f required_status_checks='{"strict":true,"contexts":["Code Formatting & Secret Audit (NFR-SEC-03, NFR-MNT-01)","Backend Lint & Typecheck (NFR-MNT-01, NFR-OPS-01)","Frontend Lint & Build (NFR-MNT-01, NFR-OPS-01)"]}' \
+  -f required_status_checks='{"strict":true,"contexts":["Code Formatting & Secret Audit (NFR-SEC-03, NFR-MNT-01)","Backend Lint & Typecheck (NFR-MNT-01, NFR-OPS-01)","Frontend Lint & Build (NFR-MNT-01, NFR-OPS-01)","API Tests against Test Database (NFR-OPS-01)"]}' \
+  -F enforce_admins=true \
+  -f required_pull_request_reviews='{"dismiss_stale_reviews":true,"require_code_owner_reviews":false,"required_approving_review_count":1}' \
+  -F restrictions=null \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false
+
+# Apply required status checks and protections to 'master'
+gh api --method PUT \
+  -H "Accept: application/vnd.github+json" \
+  /repos/:owner/:repo/branches/master/protection \
+  -f required_status_checks='{"strict":true,"contexts":["Code Formatting & Secret Audit (NFR-SEC-03, NFR-MNT-01)","Backend Lint & Typecheck (NFR-MNT-01, NFR-OPS-01)","Frontend Lint & Build (NFR-MNT-01, NFR-OPS-01)","API Tests against Test Database (NFR-OPS-01)"]}' \
   -F enforce_admins=true \
   -f required_pull_request_reviews='{"dismiss_stale_reviews":true,"require_code_owner_reviews":false,"required_approving_review_count":1}' \
   -F restrictions=null \
   -F allow_force_pushes=false \
   -F allow_deletions=false
 ```
+
+### 3.1 Enforcement & Merge Blocking (IMS-51.3 / NFR-OPS-01)
+
+- **`strict: true`**: Requires PR branches to be updated with the latest base branch and all checks to pass cleanly.
+- **Merge Blocking**: When any CI status check fails (formatting, linting, unit tests, or API tests), GitHub marks the check with a red ❌ and disables the "Merge pull request" button.
+- **Admin Enforcement (`enforce_admins: true`)**: Even repository administrators cannot bypass failing checks or missing approvals.
 
 ---
 

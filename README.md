@@ -1,5 +1,7 @@
 # Inventory and Sales Management System (IMS)
 
+[![CI Pipeline](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml/badge.svg)](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml)
+
 ## 📋 Table of Contents
 
 1. [Overview &amp; Architecture](#overview-architecture)
@@ -443,7 +445,15 @@ npm run format:check
 
 ## 🔒 Branch Protection & PR Workflow
 
-Direct commits to the `main` branch are blocked.
+Direct commits to the `main` and `master` branches are blocked. All changes must be introduced through a Pull Request that satisfies the following:
+
+- **Required Status Checks**: All 4 automated GitHub Actions CI checks must be green:
+  1. `Code Formatting & Secret Audit (NFR-SEC-03, NFR-MNT-01)`
+  2. `Backend Lint & Typecheck (NFR-MNT-01, NFR-OPS-01)`
+  3. `Frontend Lint & Build (NFR-MNT-01, NFR-OPS-01)`
+  4. `API Tests against Test Database (NFR-OPS-01)`
+- **Merge Blocking**: Any failing check or unaddressed review comment strictly blocks merging (**NFR-OPS-01**).
+- **Peer Approval**: At least **1 approved review** from a peer is required before merge.
 
 1. **Create a topic branch**:
    ```bash
