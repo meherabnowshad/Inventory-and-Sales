@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Category } from '@prisma/client';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Category, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -23,15 +23,30 @@ export class CategoriesService {
     };
   }
 
+  // P2002 = Prisma unique violation. Only categories_name_ci can fire it here, so it means the name is taken
+  private rethrowIfNameTaken(e: unknown): never {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      throw new ConflictException({
+        code: 'CATEGORY_NAME_TAKEN',
+        message: 'A category with this name already exists (case is ignored)',
+      });
+    }
+    throw e;
+  }
+
   async create(dto: CreateCategoryDto) {
-    const category = await this.prisma.category.create({
-      data: {
-        name: dto.name,
-        description: dto.description ?? null,
-        createdBy: STUB_USER_ID,
-      },
-    });
-    return this.toResponse(category);
+    try {
+      const category = await this.prisma.category.create({
+        data: {
+          name: dto.name,
+          description: dto.description ?? null,
+          createdBy: STUB_USER_ID,
+        },
+      });
+      return this.toResponse(category);
+    } catch (e) {
+      this.rethrowIfNameTaken(e);
+    }
   }
 
   async findAll() {
@@ -49,14 +64,18 @@ export class CategoriesService {
 
   async update(id: number, dto: UpdateCategoryDto) {
     await this.findOne(id); // 404 if it does not exist
-    const category = await this.prisma.category.update({
-      where: { id },
-      data: {
-        name: dto.name,
-        description: dto.description,
-        isActive: dto.isActive,
-      },
-    });
-    return this.toResponse(category);
+    try {
+      const category = await this.prisma.category.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          description: dto.description,
+          isActive: dto.isActive,
+        },
+      });
+      return this.toResponse(category);
+    } catch (e) {
+      this.rethrowIfNameTaken(e);
+    }
   }
 }
