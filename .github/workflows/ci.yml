@@ -142,4 +142,5 @@ jobs:
         env:
           DATABASE_URL: postgresql://smartmart:smartmart_dev@localhost:5432/inventory_sales_db_test?schema=public
           NODE_ENV: test
+          JWT_SECRET: test_ci_jwt_secret_key_minimum_32_characters_for_testing
         run: npm run test:api
