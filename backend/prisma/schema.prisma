@@ -59,6 +59,7 @@ model User {
   auditLogs              AuditLog[]
   refreshTokens          RefreshToken[]
   idempotencyKeys        IdempotencyKey[]
+  refreshTokens          RefreshToken[]
 
   @@index([roleId], map: "users_role_id_idx")
   @@map("users")
