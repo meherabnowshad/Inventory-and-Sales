@@ -67,7 +67,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     it('rejects unauthenticated requests to protected endpoints with HTTP 401', async () => {
       const res = await request(app.getHttpServer()).get('/api/categories');
       expect(res.status).toBe(401);
-      expect(res.body.message).toBe('Authentication token is required');
+      expect(res.body.message).toBe('Authorization header is missing');
     });
 
     it('rejects requests with invalid Bearer token with HTTP 401', async () => {
