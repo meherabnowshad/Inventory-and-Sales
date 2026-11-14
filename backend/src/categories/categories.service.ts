@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Category, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { ListCategoriesQueryDto } from './dto/list-categories-query.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 // TODO(IMS-05): replace with the logged-in user's id from the auth guard
@@ -49,9 +50,20 @@ export class CategoriesService {
     }
   }
 
-  async findAll() {
-    const categories = await this.prisma.category.findMany({ orderBy: { name: 'asc' } });
-    return categories.map((c) => this.toResponse(c));
+  // FR-CAT-04: every category with its product count (active and inactive products), optional status filter
+  async findAll(query: ListCategoriesQueryDto) {
+    const where: Prisma.CategoryWhereInput =
+      query.status === 'active'
+        ? { isActive: true }
+        : query.status === 'inactive'
+          ? { isActive: false }
+          : {};
+    const categories = await this.prisma.category.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { products: true } } },
+    });
+    return categories.map((c) => ({ ...this.toResponse(c), productCount: c._count.products }));
   }
 
   async findOne(id: number) {
