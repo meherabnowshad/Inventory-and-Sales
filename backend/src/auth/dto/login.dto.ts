@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class LoginDto {
   @IsOptional()
@@ -11,7 +11,6 @@ export class LoginDto {
 
   @IsString()
   @IsNotEmpty({ message: 'Password is required' })
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
   password!: string;
 
   getIdentifier(): string {

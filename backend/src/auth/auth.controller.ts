@@ -44,8 +44,7 @@ export class AuthController {
     @Headers('authorization') authHeader?: string,
   ): Promise<RefreshResponse> {
     const token =
-      refreshDto?.refreshToken ||
-      (authHeader ? this.authService.cleanToken(authHeader) : '');
+      refreshDto?.refreshToken || (authHeader ? this.authService.cleanToken(authHeader) : '');
 
     if (!token) {
       throw new UnauthorizedException('Refresh token is required');
@@ -66,7 +65,9 @@ export class AuthController {
   ): Promise<{ message: string }> {
     const rawToken = authHeader || body?.refreshToken;
     if (!rawToken) {
-      throw new UnauthorizedException('Authorization header or refreshToken is required for logout');
+      throw new UnauthorizedException(
+        'Authorization header or refreshToken is required for logout',
+      );
     }
     await this.authService.revokeToken(rawToken);
     return { message: 'Logged out successfully' };
