@@ -1,16 +1,16 @@
 # SmartMart Database Schema
 
-|              |                                                                                                                                                                  |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Tasks**    | IMS-02.2 Keys, unique indexes, checks and foreign keys · IMS-02.3 Stock movement ledger and audit log                                                            |
-| **Parent**   | IMS-02 Design relational database schema and data integrity rules                                                                                                |
-| **Author**   | Dev 1 · Md. Rashadul Islam                                                                                                                                       |
-| **Reviewer** | Dev 2 · MD Meherab Hossain Nowshad                                                                                                                               |
-| **Tester**   | QA 1 · Radouan Ahmed (IMS-02.5)                                                                                                                                  |
-| **Source**   | SRS Group 1 (SmartMart) — main SRS section 5 "Data requirements", section 6 "Business rules", validation rules; engineering spec v0.3 section 3 "PostgreSQL DDL" |
-| **Covers**   | BR-01, BR-12, FR-INV-08 (02.2) · FR-INV-03, FR-AUD-01 (02.3)                                                                                                     |
-| **Database** | PostgreSQL 16                                                                                                                                                    |
-| **Status**   | Draft for review (IMS-02.4)                                                                                                                                      |
+|              |                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tasks**    | IMS-02.2 Keys, unique indexes, checks and foreign keys · IMS-02.3 Stock movement ledger and audit log · IMS-02.4 BA review changes (users throttle columns, `idempotency_keys`, phone rule) |
+| **Parent**   | IMS-02 Design relational database schema and data integrity rules                                                                                                                           |
+| **Author**   | Dev 1 · Md. Rashadul Islam                                                                                                                                                                  |
+| **Reviewer** | Dev 2 · MD Meherab Hossain Nowshad                                                                                                                                                          |
+| **Tester**   | QA 1 · Radouan Ahmed (IMS-02.5)                                                                                                                                                             |
+| **Source**   | SRS Group 1 (SmartMart) — main SRS section 5 "Data requirements", section 6 "Business rules", validation rules; engineering spec v0.3 section 3 "PostgreSQL DDL"                            |
+| **Covers**   | BR-01, BR-12, FR-INV-08 (02.2) · FR-INV-03, FR-AUD-01 (02.3)                                                                                                                                |
+| **Database** | PostgreSQL 16                                                                                                                                                                               |
+| **Status**   | BA review answered 11 Nov 2026. Changes applied in migrations 20261111000000, 20261111000100 and 20261111000200; waiting for BA re-validation (IMS-02.4)                                    |
 
 ER diagram: [erd.md](./erd.md) · [erd.dbml](./erd.dbml) · [erd.png](./erd.png)
 
@@ -20,25 +20,25 @@ ER diagram: [erd.md](./erd.md) · [erd.dbml](./erd.dbml) · [erd.png](./erd.png)
 
 These apply to every table unless the table section says otherwise.
 
-| Topic                   | Rule                                                                                                                                                                                                                                                                                                                                | Source                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| Primary keys            | Surrogate `id`, `BIGSERIAL` (`SERIAL` / `SMALLSERIAL` for small lookup tables)                                                                                                                                                                                                                                                      | DDL                       |
-| Money                   | `NUMERIC(12,2)`, range 0 to 9,999,999.99, BDT. Never `FLOAT` / `REAL`                                                                                                                                                                                                                                                               | BR-13, NFR-REL-03         |
-| Quantities              | `INTEGER`, whole numbers, `> 0` on document lines                                                                                                                                                                                                                                                                                   | Validation rules          |
-| Text                    | Required text is trimmed and not empty: `CHECK (btrim(col) <> '')`. Names are at most 120 characters                                                                                                                                                                                                                                | Validation rules          |
-| Phone                   | `CHAR(11)`, Bangladesh mobile format: `CHECK (phone ~ '^01[3-9][0-9]{8}$')`                                                                                                                                                                                                                                                         | Validation rules, DDL     |
-| Case-insensitive unique | Unique index on `lower(col)`, not a plain `UNIQUE`                                                                                                                                                                                                                                                                                  | BR-12, FR-CAT-01          |
-| Audit columns           | Every business table has `created_at`, `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT now()`) and `created_by` (`BIGINT NOT NULL → users.id`). Line tables (`purchase_order_lines`, `sales_invoice_lines`, `sales_return_lines`) are only written together with their header, so they take who and when from the header, as in the DDL | Section 5                 |
-| Deletion                | No hard delete for anything that appears in history. Master data uses `is_active`; documents use a `CANCELLED` status                                                                                                                                                                                                               | BR-14                     |
-| Foreign keys            | `ON DELETE RESTRICT` by default. `ON DELETE CASCADE` only from a document header to its own lines                                                                                                                                                                                                                                   | DDL                       |
-| FK indexes              | PostgreSQL does not index foreign keys automatically, so every FK used in a lookup gets an index                                                                                                                                                                                                                                    | Performance (NFR-PERF-01) |
-| Constraint names        | `<table>_<column>_<rule>`, e.g. `products_stock_qty_nonneg`, so a failing test or API error can name the rule                                                                                                                                                                                                                       | Team convention           |
+| Topic                   | Rule                                                                                                                                                                                                                                                                                                                                | Source                           |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Primary keys            | Surrogate `id`, `BIGSERIAL` (`SERIAL` / `SMALLSERIAL` for small lookup tables)                                                                                                                                                                                                                                                      | DDL                              |
+| Money                   | `NUMERIC(12,2)`, range 0 to 9,999,999.99, BDT. Never `FLOAT` / `REAL`                                                                                                                                                                                                                                                               | BR-13, NFR-REL-03                |
+| Quantities              | `INTEGER`, whole numbers, `> 0` on document lines                                                                                                                                                                                                                                                                                   | Validation rules                 |
+| Text                    | Required text is trimmed and not empty: `CHECK (btrim(col) <> '')`. Names are at most 120 characters                                                                                                                                                                                                                                | Validation rules                 |
+| Phone                   | `CHAR(11)`, Bangladesh mobile format: `CHECK (phone ~ '^01[0-9]{9}$')`                                                                                                                                                                                                                                                              | Validation rules (SRS section 6) |
+| Case-insensitive unique | Unique index on `lower(col)`, not a plain `UNIQUE`                                                                                                                                                                                                                                                                                  | BR-12, FR-CAT-01                 |
+| Audit columns           | Every business table has `created_at`, `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT now()`) and `created_by` (`BIGINT NOT NULL → users.id`). Line tables (`purchase_order_lines`, `sales_invoice_lines`, `sales_return_lines`) are only written together with their header, so they take who and when from the header, as in the DDL | Section 5                        |
+| Deletion                | No hard delete for anything that appears in history. Master data uses `is_active`; documents use a `CANCELLED` status                                                                                                                                                                                                               | BR-14                            |
+| Foreign keys            | `ON DELETE RESTRICT` by default. `ON DELETE CASCADE` only from a document header to its own lines                                                                                                                                                                                                                                   | DDL                              |
+| FK indexes              | PostgreSQL does not index foreign keys automatically, so every FK used in a lookup gets an index                                                                                                                                                                                                                                    | Performance (NFR-PERF-01)        |
+| Constraint names        | `<table>_<column>_<rule>`, e.g. `products_stock_qty_nonneg`, so a failing test or API error can name the rule                                                                                                                                                                                                                       | Team convention                  |
 
 **Key legend used below:** PK = primary key · FK = foreign key · UQ = unique · CK = check · NN = not null
 
 ---
 
-## 2. Tables (14)
+## 2. Tables (14 + 1 helper)
 
 ### 2.1 `roles`
 
@@ -57,23 +57,30 @@ Seed rows: `Administrator`, `Sales Staff`, `Store Staff`.
 
 ### 2.2 `users`
 
-| Column                     | Type           | Null | Rule                                                          |
-| -------------------------- | -------------- | ---- | ------------------------------------------------------------- |
-| `id`                       | `BIGSERIAL`    | NN   | PK                                                            |
-| `name`                     | `VARCHAR(120)` | NN   | CK not empty                                                  |
-| `username`                 | `VARCHAR(40)`  | NN   | UQ on `lower(username)`                                       |
-| `email`                    | `VARCHAR(254)` | NN   | UQ on `lower(email)`                                          |
-| `password_hash`            | `TEXT`         | NN   | Argon2id hash, never the plain password (FR-AUTH-04)          |
-| `role_id`                  | `SMALLINT`     | NN   | FK → `roles.id` RESTRICT                                      |
-| `is_active`                | `BOOLEAN`      | NN   | default `TRUE`                                                |
-| `created_at`, `updated_at` | `TIMESTAMPTZ`  | NN   | default `now()`                                               |
-| `created_by`               | `BIGINT`       | NULL | FK → `users.id`. NULL only for the first seeded administrator |
+| Column                     | Type           | Null | Rule                                                                     |
+| -------------------------- | -------------- | ---- | ------------------------------------------------------------------------ |
+| `id`                       | `BIGSERIAL`    | NN   | PK                                                                       |
+| `name`                     | `VARCHAR(120)` | NN   | CK not empty                                                             |
+| `username`                 | `VARCHAR(40)`  | NN   | UQ on `lower(username)`                                                  |
+| `email`                    | `VARCHAR(254)` | NN   | UQ on `lower(email)`                                                     |
+| `password_hash`            | `TEXT`         | NN   | Argon2id hash, never the plain password (FR-AUTH-04)                     |
+| `role_id`                  | `SMALLINT`     | NN   | FK → `roles.id` RESTRICT                                                 |
+| `is_active`                | `BOOLEAN`      | NN   | default `TRUE`                                                           |
+| `failed_logins`            | `INTEGER`      | NN   | default `0`; CK `>= 0`. Failed logins in the current window (FR-AUTH-05) |
+| `first_failed_at`          | `TIMESTAMPTZ`  | NULL | start of the current 15-minute window                                    |
+| `locked_until`             | `TIMESTAMPTZ`  | NULL | login refused until this time; NULL = not locked                         |
+| `created_at`, `updated_at` | `TIMESTAMPTZ`  | NN   | default `now()`                                                          |
+| `created_by`               | `BIGINT`       | NULL | FK → `users.id`. NULL only for the first seeded administrator            |
 
 ```sql
 CREATE UNIQUE INDEX users_username_ci ON users (lower(username));
 CREATE UNIQUE INDEX users_email_ci    ON users (lower(email));
 CREATE INDEX        users_role_id_idx ON users (role_id);
+ALTER TABLE users
+  ADD CONSTRAINT users_failed_logins_check CHECK (failed_logins >= 0);   -- IMS-02.4
 ```
+
+The three throttle columns serve FR-AUTH-05 (5 failures in 15 minutes, then a 15-minute wait). The login code (IMS-05.4) counts failures from `first_failed_at`, sets `locked_until` on the fifth, and resets all three (`0`, `NULL`, `NULL`) after a successful login. Added by migration `20261111000000_users_login_throttle` (BA decision, point 4).
 
 ---
 
@@ -206,9 +213,13 @@ The single walk-in row is seeded after the first administrator, so its `created_
 | audit columns   |                 | NN   | see conventions                                                                  |
 
 ```sql
+-- One CHECK per column (IMS-02.5 Bug 1, migration 20261112000000_po_received_checks).
+-- A single CHECK on both columns let a DRAFT order keep only received_at or only received_by.
 ALTER TABLE purchase_orders
-  ADD CONSTRAINT purchase_orders_received_consistent
-  CHECK ((status = 'RECEIVED') = (received_at IS NOT NULL AND received_by IS NOT NULL));
+  ADD CONSTRAINT purchase_orders_received_at_consistent
+    CHECK ((status = 'RECEIVED') = (received_at IS NOT NULL)),
+  ADD CONSTRAINT purchase_orders_received_by_consistent
+    CHECK ((status = 'RECEIVED') = (received_by IS NOT NULL));
 
 CREATE INDEX purchase_orders_supplier_idx ON purchase_orders (supplier_id);
 CREATE INDEX purchase_orders_status_date  ON purchase_orders (status, order_date DESC);  -- FR-PO-07
@@ -363,6 +374,28 @@ See section 4.
 | `after_json`  | `JSONB`       | NULL | NULL on delete-like actions                      |
 | `user_id`     | `BIGINT`      | NN   | FK → `users.id`                                  |
 | `created_at`  | `TIMESTAMPTZ` | NN   | default `now()`                                  |
+
+---
+
+### 2.15 `idempotency_keys`
+
+Helper table added after the BA review (IMS-02.4, point 2), on top of the 14 tables of SRS section 5. Migration `20261111000100_idempotency_keys`. Serves FR-SAL-07 and FR-RET-06: a retry or double click creates one document and one stock change.
+
+| Column          | Type          | Null | Rule                                                                        |
+| --------------- | ------------- | ---- | --------------------------------------------------------------------------- |
+| `user_id`       | `BIGINT`      | NN   | PK (part 1); FK → `users.id` RESTRICT                                       |
+| `key`           | `UUID`        | NN   | PK (part 2); the `Idempotency-Key` header value (UUID v4)                   |
+| `request_hash`  | `CHAR(64)`    | NN   | 64-character hash of the request body, to spot a reused key with a new body |
+| `response_code` | `SMALLINT`    | NULL | HTTP status of the first response; NULL until that request has finished     |
+| `response_body` | `JSONB`       | NULL | the stored response, returned again on a retry                              |
+| `created_at`    | `TIMESTAMPTZ` | NN   | default `now()`                                                             |
+
+How the API uses it (engineering spec 1.1, step 7):
+
+- Same user, same key, same `request_hash`: return the stored response and change nothing.
+- Same key, different `request_hash`: reject with `422 IDEMPOTENCY_KEY_REUSED`.
+- The response is stored after `COMMIT`.
+- `sales_invoices.idempotency_key` stays as a second guard on the invoice itself.
 
 ---
 
@@ -537,21 +570,21 @@ Run as `smartmart_app` against a seeded database. Each statement must fail.
 
 ## 6. Open points for the review (IMS-02.4)
 
-The main SRS section 5 and the engineering DDL v0.3 differ on these points. This document follows section 5, as IMS-02 asks; the BA and Dev 2 decide before IMS-04 writes the migration.
+The main SRS section 5 and the engineering DDL v0.3 differ on these points. This document follows section 5, as IMS-02 asks. The BA (Md. Rabiul Islam) answered all 11 points on 11 Nov 2026; the Decision column records the answers.
 
-| #   | Point                             | Section 5 (this doc)                    | DDL v0.3                                                            | Decision                               |
-| --- | --------------------------------- | --------------------------------------- | ------------------------------------------------------------------- | -------------------------------------- |
-| 1   | Roles                             | `roles` table + `users.role_id` FK      | Enum `user_role` on `users.role`                                    |                                        |
-| 2   | Idempotency                       | `sales_invoices.idempotency_key` column | Separate `idempotency_keys` table, also used by returns (FR-RET-06) |                                        |
-| 3   | Sessions                          | No table                                | `refresh_tokens` table (FR-AUTH-02)                                 |                                        |
-| 4   | User name column                  | `name`                                  | `full_name`, plus `must_reset_pw`, `failed_logins`, `locked_until`  |                                        |
-| 5   | Status and type lists             | `VARCHAR` + CHECK                       | PostgreSQL `ENUM` types                                             |                                        |
-| 6   | `customers.created_by`            | Required (every business table)         | Not present                                                         |                                        |
-| 7   | `payment_method` on confirm       | Optional (FR-SAL-10 is _Should_)        | Required by the confirm CHECK                                       |                                        |
-| 8   | SKU lock and append-only triggers | Proposed here                           | Not in the DDL (REVOKE only)                                        |                                        |
-| 9   | Phone format                      | "11 digits starting 01"                 | Regex `^01[3-9][0-9]{8}$` (stricter)                                |                                        |
-| 10  | Audit columns on line tables      | "Every business table"                  | Not on line tables                                                  |                                        |
-| 11  | `ref_id` for adjustments          | Not defined                             | Not defined                                                         | Proposed: `audit_log.id` (section 3.2) |
+| #   | Point                             | Section 5 (this doc)                    | DDL v0.3                                                            | Decision                                                                                                                                                       |
+| --- | --------------------------------- | --------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Roles                             | `roles` table + `users.role_id` FK      | Enum `user_role` on `users.role`                                    | Approved. Keep `roles` and `users.role_id`; 3 fixed rows, no API to create roles.                                                                              |
+| 2   | Idempotency                       | `sales_invoices.idempotency_key` column | Separate `idempotency_keys` table, also used by returns (FR-RET-06) | Approved with change. Keep `sales_invoices.idempotency_key` and add the `idempotency_keys` table (migration `20261111000100`).                                 |
+| 3   | Sessions                          | No table                                | `refresh_tokens` table (FR-AUTH-02)                                 | Approved. `refresh_tokens` (hash only, `expires_at`, `revoked_at`) is added in IMS-05. Not built yet.                                                          |
+| 4   | User name column                  | `name`                                  | `full_name`, plus `must_reset_pw`, `failed_logins`, `locked_until`  | Approved with change. Keep `name`; add `failed_logins`, `first_failed_at`, `locked_until` (migration `20261111000000`). Reset all three on a successful login. |
+| 5   | Status and type lists             | `VARCHAR` + CHECK                       | PostgreSQL `ENUM` types                                             | Approved. `VARCHAR` + CHECK, with the same uppercase codes the API uses.                                                                                       |
+| 6   | `customers.created_by`            | Required (every business table)         | Not present                                                         | Approved. Required; the seeded walk-in customer uses the seeded admin as `created_by`.                                                                         |
+| 7   | `payment_method` on confirm       | Optional (FR-SAL-10 is _Should_)        | Required by the confirm CHECK                                       | Approved. Optional now (`CASH`, `CARD`, `MOBILE_BANKING`); IMS-36 adds the check that a confirmed invoice has one.                                             |
+| 8   | SKU lock and append-only triggers | Proposed here                           | Not in the DDL (REVOKE only)                                        | Approved. Keep both triggers, add `BEFORE TRUNCATE` triggers, revoke `UPDATE` and `DELETE` from the app user. Already in the init migration.                   |
+| 9   | Phone format                      | "11 digits starting 01"                 | Regex `^01[3-9][0-9]{8}$` (stricter)                                | Keep the SRS rule `^01[0-9]{9}$`; the stricter 013 to 019 rule would need an SRS change. Migration `20261111000200`.                                           |
+| 10  | Audit columns on line tables      | "Every business table"                  | Not on line tables                                                  | Approved. Line tables follow their parent document's audit columns; the BA adds one line to SRS section 5.                                                     |
+| 11  | `ref_id` for adjustments          | Not defined                             | Not defined                                                         | Approved. `ref_type = 'ADJUSTMENT'`, `ref_id = audit_log.id`, both written in one transaction (FR-AUD-01, BR-09).                                              |
 
 ---
 
@@ -568,3 +601,49 @@ All rules in this document were built on PostgreSQL 16.15 and tested on 2026-11-
 | Valid adjustment accepted; reconciliation query returns 0 rows; generated `line_total` = 3 × 950.00 = 2850.00                        | positive checks                                                                                                                   |
 | Full adjustment transaction (section 3.2) as `smartmart_app`: stock 48 → 47, movement linked to its audit row, reconciliation 0 rows | FR-INV-03, FR-INV-05, FR-AUD-01                                                                                                   |
 | Transaction with an audit row followed by `stock_qty = -1`: rejected and fully rolled back (no audit row left, stock unchanged)      | BR-01, NFR-REL-01                                                                                                                 |
+
+---
+
+## 8. Changes after the BA review (IMS-02.4)
+
+Applied on 2026-11-11 as new migrations (the init migration is not edited, so databases that already ran it stay valid). Each has a `down.sql`; `npm run db:down` runs them all, newest first.
+
+| Migration                              | Change                                                                                   | BA point |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- | -------- |
+| `20261111000000_users_login_throttle`  | `users.failed_logins`, `first_failed_at`, `locked_until` and `users_failed_logins_check` | 4        |
+| `20261111000100_idempotency_keys`      | new table `idempotency_keys` (section 2.15)                                              | 2        |
+| `20261111000200_phone_format_srs_rule` | `suppliers_phone_check` and `customers_phone_check` use `^01[0-9]{9}$`                   | 9        |
+
+Checked on the local development database:
+
+| Result                                                                                                                                                   | Checks       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `failed_logins = -1` rejected by `users_failed_logins_check`; existing users show `0`, `NULL`, `NULL`                                                    | point 4      |
+| `idempotency_keys`: same user and key twice rejected (PK); same key for another user accepted; unknown user, non-UUID key and 65-character hash rejected | point 2      |
+| Phone: 010 and 012 numbers accepted; 10 digits, 12 digits, `02...` prefix and letters rejected; customer without phone (not walk-in) still rejected      | point 9      |
+| Each `down.sql` undoes its migration and the migration applies again                                                                                     | all three    |
+| `prisma migrate diff` between `schema.prisma` and the database: no difference                                                                            | all three    |
+| `db:down` then `db:setup` on an empty database: all 4 migrations undone and applied again, seed counts unchanged                                         | down scripts |
+
+---
+
+## 9. Fixes after QA testing (IMS-02.5)
+
+| Migration                           | Change                                                                                                                                                   | Bug                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `20261112000000_po_received_checks` | `purchase_orders_received_consistent` is replaced by `purchase_orders_received_at_consistent` and `purchase_orders_received_by_consistent` (section 2.7) | Bug 1, TC-DB-041 (DRAFT order with only `received_at`) |
+
+Cause: the old CHECK compared the status with `received_at AND received_by` together, so a row with only one of the two columns passed when the status was not `RECEIVED`.
+
+Checked on the local development database (each insert in a rolled-back transaction):
+
+| Row                                                      | Result                                               |
+| -------------------------------------------------------- | ---------------------------------------------------- |
+| DRAFT, `received_at` set, `received_by` NULL (TC-DB-041) | rejected by `purchase_orders_received_at_consistent` |
+| DRAFT, `received_at` NULL, `received_by` set             | rejected by `purchase_orders_received_by_consistent` |
+| RECEIVED, `received_at` set, `received_by` NULL          | rejected by `purchase_orders_received_by_consistent` |
+| DRAFT, both NULL; RECEIVED, both set                     | accepted; the two seeded received orders pass        |
+
+`down.sql` restores the old CHECK (as `NOT VALID`) and the migration applies again; `prisma migrate diff` shows no difference.
+
+Not changed here: TC-DB-054 (`payment_method` on a confirmed invoice) follows the BA's point 7 decision (check added in IMS-36), and TC-DB-055 (draft invoice with a number) waits for the BA answer BAQ-DB-15.

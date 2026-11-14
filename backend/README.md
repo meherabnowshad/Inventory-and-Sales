@@ -24,7 +24,7 @@ Run these commands from the repository root with `--workspace=backend`, or from 
 - `npm run db:migrate` — Applies pending migrations (`prisma migrate deploy`).
 - `npm run db:seed` — Loads demo data (`prisma db seed`).
 - `npm run db:setup` — Applies migrations, then loads demo data.
-- `npm run db:down` — Drops tables in the configured database. This deletes data; use only with a local development database.
+- `npm run db:down` — Runs every migration's `down.sql`, newest first (`scripts/db-down.js`). This deletes all data in the configured database; use only with a local development database.
 
 ## Architecture
 
@@ -34,6 +34,6 @@ Run these commands from the repository root with `--workspace=backend`, or from 
 - `src/health/` — HealthController providing `/api/health` status for liveness and database checks.
 - `src/inventory/` — InventoryController and InventoryService querying products via Prisma.
 - `src/sales/` — SalesController and SalesService querying invoices via Prisma.
-- `prisma/schema.prisma` — PostgreSQL data model (14 tables).
+- `prisma/schema.prisma` — PostgreSQL data model (14 tables plus `idempotency_keys`).
 - `prisma/migrations/` — Database migrations (`migration.sql`, `down.sql`).
 - `prisma/seed.ts`, `prisma/seed-data.ts` — Idempotent demo data loader.
