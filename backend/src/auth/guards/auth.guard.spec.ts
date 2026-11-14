@@ -84,9 +84,7 @@ describe('AuthGuard (IMS-05.2, IMS-05.5 | FR-AUTH-02, NFR-SEC-01)', () => {
   });
 
   it('blocks access with 401 when token has expired (FR-AUTH-03)', async () => {
-    mockAuthService.validateToken.mockRejectedValue(
-      new UnauthorizedException('Token has expired'),
-    );
+    mockAuthService.validateToken.mockRejectedValue(new UnauthorizedException('Token has expired'));
 
     const { context } = createMockContext('Bearer expired_token_123');
 

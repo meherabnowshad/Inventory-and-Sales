@@ -6,6 +6,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { TemporarilyLockedException } from './exceptions/temporarily-locked.exception';
 
+// Precomputed dummy Argon2id hash to mitigate timing-based username enumeration
+const DUMMY_ARGON2_HASH =
+  '$argon2id$v=19$m=19456,t=2,p=1$K17no/In680t+qyuEiWhag$b/X4AzL+Nmg4DZrKXArBf7pKv/OAXi1lgLQhLZvpxl8';
+
 export interface AuthUserResponse {
   id: number;
   name: string;
@@ -60,9 +64,7 @@ export class AuthService {
     @Optional() private readonly configService?: ConfigService,
   ) {
     this.jwtSecret =
-      this.configService?.get<string>('JWT_SECRET') ||
-      process.env.JWT_SECRET ||
-      DEFAULT_JWT_SECRET;
+      this.configService?.get<string>('JWT_SECRET') || process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
   }
 
   /**
@@ -90,23 +92,28 @@ export class AuthService {
       },
     });
 
-    // FR-AUTH-01: Wrong login shows one generic error that names no field
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('Invalid username or password');
-    }
-
     const now = new Date();
 
     // FR-AUTH-05: Block login (even with right password) while account is temporarily locked
-    if (user.lockedUntil && user.lockedUntil > now) {
+    if (user && user.lockedUntil && user.lockedUntil > now) {
       const retryAfterSeconds = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 1000);
       throw new TemporarilyLockedException(retryAfterSeconds);
     }
 
-    // FR-AUTH-04: Argon2id password hash verification
-    const isPasswordValid = await verify(user.passwordHash, dto.password);
-    if (!isPasswordValid) {
-      await this.recordFailedLoginAttempt(user, now);
+    // Timing attack mitigation: always execute Argon2id verification even if user is missing/inactive
+    const hashToVerify = user?.passwordHash || DUMMY_ARGON2_HASH;
+    let isPasswordValid = false;
+    try {
+      isPasswordValid = await verify(hashToVerify, dto.password);
+    } catch {
+      isPasswordValid = false;
+    }
+
+    // FR-AUTH-01: Wrong login shows one generic error that names no field (prevents username enumeration)
+    if (!user || !user.isActive || !isPasswordValid) {
+      if (user && user.isActive) {
+        await this.recordFailedLoginAttempt(user, now);
+      }
       throw new UnauthorizedException('Invalid username or password');
     }
 

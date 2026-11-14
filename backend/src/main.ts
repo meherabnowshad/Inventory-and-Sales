@@ -9,7 +9,8 @@ async function bootstrap() {
   // Set global API prefix: /api
   app.setGlobalPrefix('api');
 
-  // Request Validation Pipe (DTO enforcement)
+  // Validate every request body against its DTO (IMS-08.1, NFR-SEC-02)
+  // whitelist: drop fields not in the DTO; transform: apply @Transform (trim) and build DTO instances
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

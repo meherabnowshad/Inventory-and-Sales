@@ -4,7 +4,6 @@ import { Algorithm, hash } from '@node-rs/argon2';
 import {
   AuthService,
   ACCESS_TOKEN_TTL_SEC,
-  REFRESH_TOKEN_TTL_MS,
   MAX_FAILED_LOGINS,
   THROTTLE_WINDOW_MS,
 } from './auth.service';
@@ -89,7 +88,11 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
         data,
       }: {
         where: { id: bigint };
-        data: Partial<{ failedLogins: number; firstFailedAt: Date | null; lockedUntil: Date | null }>;
+        data: Partial<{
+          failedLogins: number;
+          firstFailedAt: Date | null;
+          lockedUntil: Date | null;
+        }>;
       }) => {
         Object.assign(mockUser, data);
         return mockUser;
@@ -153,7 +156,13 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
     );
 
     mockPrisma.refreshToken.updateMany.mockImplementation(
-      async ({ where, data }: { where: { userId: bigint; revokedAt: null }; data: { revokedAt: Date } }) => {
+      async ({
+        where,
+        data,
+      }: {
+        where: { userId: bigint; revokedAt: null };
+        data: { revokedAt: Date };
+      }) => {
         let count = 0;
         for (const [tokenHash, row] of storedTokens.entries()) {
           if (row.userId === where.userId && row.revokedAt === null) {
@@ -328,7 +337,9 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       const tamperedJwt = `${parts[0]}.${parts[1]}.tampered_sig_12345`;
 
       await expect(authService.validateToken(tamperedJwt)).rejects.toThrow(UnauthorizedException);
-      await expect(authService.validateToken(tamperedJwt)).rejects.toThrow('Invalid token signature');
+      await expect(authService.validateToken(tamperedJwt)).rejects.toThrow(
+        'Invalid token signature',
+      );
     });
 
     it('renews session with a valid refresh token and rotates it (Done when: refresh works)', async () => {
@@ -365,6 +376,15 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       );
     });
 
+    it('rejects fake or random unregistered tokens (HTTP 401)', async () => {
+      await expect(authService.validateToken('fake_unregistered_token_123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      await expect(authService.revokeToken('fake_unregistered_token_123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
     it('rejects an expired refresh token (>8 hours) with HTTP 401', async () => {
       const dto = new LoginDto();
       dto.usernameOrEmail = 'sadia';
@@ -380,9 +400,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
         expiresAt: new Date(Date.now() - 1000),
       });
 
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
       await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
         'Refresh token has expired',
       );
@@ -398,9 +416,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       // Deactivate user
       mockUser.isActive = false;
 
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
       await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
         'User account is deactivated',
       );
@@ -421,9 +437,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       expect(await authService.isTokenRevoked(refreshToken)).toBe(true);
 
       // Subsequent refresh attempt fails with 401
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 
     it('revokes user active session when logging out with access token', async () => {
@@ -438,9 +452,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
 
       // Refresh token is marked revoked
       expect(await authService.isTokenRevoked(refreshToken)).toBe(true);
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects repeated logout attempts with 401', async () => {
@@ -451,9 +463,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       const { refreshToken } = await authService.validateAndLogin(dto);
       await authService.revokeToken(refreshToken);
 
-      await expect(authService.revokeToken(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.revokeToken(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects empty or missing token with 401', async () => {
