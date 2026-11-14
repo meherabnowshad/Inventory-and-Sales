@@ -3,6 +3,7 @@ import { AuthUser, AuthState, UserRole } from '../types/auth';
 import {
   loginApi,
   logoutApi,
+  getProfileApi,
   onUnauthorized,
   TOKEN_STORAGE_KEY,
   USER_STORAGE_KEY,
@@ -67,6 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     });
     return unsubscribe;
+  }, []);
+
+  // IMS-05.2 / FR-AUTH-02: Validate active session against backend on page refresh
+  useEffect(() => {
+    const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      getProfileApi().catch(() => {
+        // Any 401 triggers response interceptor -> triggerUnauthorized() automatically
+      });
+    }
   }, []);
 
   const login = useCallback(
