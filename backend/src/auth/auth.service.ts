@@ -62,6 +62,17 @@ export class AuthService {
         'JWT_SECRET environment variable is required (NFR-SEC-03). Please define it in your .env file.',
       );
     }
+    const nodeEnv = this.configService?.get<string>('NODE_ENV') || process.env.NODE_ENV;
+    if (
+      nodeEnv === 'production' &&
+      (secret.includes('CHANGE_ME') ||
+        secret.includes('change_in_production') ||
+        secret.length < 32)
+    ) {
+      throw new Error(
+        'Insecure or default JWT_SECRET cannot be used in production (NFR-SEC-03). Please configure a strong, random key of at least 32 characters.',
+      );
+    }
     this.jwtSecret = secret;
   }
 
