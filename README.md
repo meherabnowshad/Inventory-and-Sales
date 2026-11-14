@@ -236,7 +236,7 @@ SELECT sku, name, stock_qty, min_stock FROM products ORDER BY id;
 
 Expected results:
 
-- `\dt` lists 14 application tables plus `_prisma_migrations`.
+- `\dt` lists 15 application tables plus `_prisma_migrations`.
 - 3 demo users have password hashes beginning with `$argon2id$`.
 - 5 products are seeded; `CH-20W` has 6 in stock (below its minimum of 10) to demonstrate low-stock status.
 
@@ -263,12 +263,12 @@ npm run db:down --workspace=backend
 npm run db:setup --workspace=backend
 ```
 
-| Command                                  | Purpose                                      |
-| ---------------------------------------- | -------------------------------------------- |
-| `npm run db:migrate --workspace=backend` | Applies pending migrations                   |
-| `npm run db:seed --workspace=backend`    | Loads demo data (idempotent)                 |
-| `npm run db:setup --workspace=backend`   | Applies migrations, then seeds               |
-| `npm run db:down --workspace=backend`    | Drops tables using the checked-in `down.sql` |
+| Command                                  | Purpose                                         |
+| ---------------------------------------- | ----------------------------------------------- |
+| `npm run db:migrate --workspace=backend` | Applies pending migrations                      |
+| `npm run db:seed --workspace=backend`    | Loads demo data (idempotent)                    |
+| `npm run db:setup --workspace=backend`   | Applies migrations, then seeds                  |
+| `npm run db:down --workspace=backend`    | Runs every migration's `down.sql`, newest first |
 
 ### Database troubleshooting
 
@@ -309,7 +309,7 @@ The backend is a NestJS 10 REST API written in TypeScript with Prisma ORM 5 (pin
 - `backend/src/health/` — HealthController providing `/api/health` status for liveness and database checks.
 - `backend/src/inventory/` — InventoryController and InventoryService querying products via Prisma.
 - `backend/src/sales/` — SalesController and SalesService querying invoices via Prisma.
-- `backend/prisma/schema.prisma` — PostgreSQL relational data model (14 tables per SRS Section 5).
+- `backend/prisma/schema.prisma` — PostgreSQL relational data model (14 tables per SRS Section 5, plus `idempotency_keys`).
 - `backend/prisma/migrations/` — SQL migration scripts (`migration.sql`) and down scripts (`down.sql`).
 - `backend/prisma/seed.ts`, `backend/prisma/seed-data.ts` — Idempotent demo data loader.
 
@@ -329,7 +329,7 @@ Commands can be run from repository root using `--workspace=backend`, or directl
 | `npm run db:migrate`      | `npm run db:migrate --workspace=backend`      | Applies pending Prisma migrations (`prisma migrate deploy`).          |
 | `npm run db:seed`         | `npm run db:seed --workspace=backend`         | Runs idempotent seed loader (`prisma db seed`).                       |
 | `npm run db:setup`        | `npm run db:setup --workspace=backend`        | Runs migrations and seeds in one command.                             |
-| `npm run db:down`         | `npm run db:down --workspace=backend`         | Drops tables with `down.sql` (use only in local dev).                 |
+| `npm run db:down`         | `npm run db:down --workspace=backend`         | Undoes every migration with its `down.sql` (use only in local dev).   |
 
 ---
 
