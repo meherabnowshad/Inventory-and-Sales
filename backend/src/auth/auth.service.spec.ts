@@ -4,13 +4,14 @@ import { Algorithm, hash } from '@node-rs/argon2';
 import {
   AuthService,
   ACCESS_TOKEN_TTL_SEC,
-  REFRESH_TOKEN_TTL_MS,
   MAX_FAILED_LOGINS,
   THROTTLE_WINDOW_MS,
 } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TemporarilyLockedException } from './exceptions/temporarily-locked.exception';
+
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_key_minimum_32_characters_long';
 
 interface MockRefreshTokenRow {
   id: bigint;
@@ -70,6 +71,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.JWT_SECRET = 'unit_test_jwt_secret_key_32_characters_long';
     storedTokens = new Map();
     nextTokenId = BigInt(1);
     sampleArgonHash = await hash('Smart@1234', { algorithm: Algorithm.Argon2id });
@@ -89,7 +91,11 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
         data,
       }: {
         where: { id: bigint };
-        data: Partial<{ failedLogins: number; firstFailedAt: Date | null; lockedUntil: Date | null }>;
+        data: Partial<{
+          failedLogins: number;
+          firstFailedAt: Date | null;
+          lockedUntil: Date | null;
+        }>;
       }) => {
         Object.assign(mockUser, data);
         return mockUser;
@@ -115,10 +121,20 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
         where,
         include,
       }: {
-        where: { tokenHash: string };
+        where: { tokenHash?: string; id?: bigint };
         include?: { user?: unknown };
       }) => {
-        const row = storedTokens.get(where.tokenHash);
+        let row: MockRefreshTokenRow | undefined;
+        if (where.tokenHash) {
+          row = storedTokens.get(where.tokenHash);
+        } else if (where.id !== undefined) {
+          for (const r of storedTokens.values()) {
+            if (r.id === where.id) {
+              row = r;
+              break;
+            }
+          }
+        }
         if (!row) return null;
         if (include?.user) {
           return { ...row, user: mockUser };
@@ -153,12 +169,23 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
     );
 
     mockPrisma.refreshToken.updateMany.mockImplementation(
-      async ({ where, data }: { where: { userId: bigint; revokedAt: null }; data: { revokedAt: Date } }) => {
+      async ({
+        where,
+        data,
+      }: {
+        where: { userId?: bigint; id?: bigint; revokedAt: null };
+        data: { revokedAt: Date };
+      }) => {
         let count = 0;
         for (const [tokenHash, row] of storedTokens.entries()) {
-          if (row.userId === where.userId && row.revokedAt === null) {
-            storedTokens.set(tokenHash, { ...row, revokedAt: data.revokedAt });
-            count++;
+          if (row.revokedAt === null) {
+            if (
+              (where.userId !== undefined && row.userId === where.userId) ||
+              (where.id !== undefined && row.id === where.id)
+            ) {
+              storedTokens.set(tokenHash, { ...row, revokedAt: data.revokedAt });
+              count++;
+            }
           }
         }
         return { count };
@@ -176,6 +203,20 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
     );
 
     authService = new AuthService(mockPrisma as unknown as PrismaService);
+  });
+
+  describe('JWT Startup Configuration (NFR-SEC-03)', () => {
+    it('fails at startup when JWT_SECRET is missing', () => {
+      const orig = process.env.JWT_SECRET;
+      delete process.env.JWT_SECRET;
+      try {
+        expect(() => new AuthService(mockPrisma as unknown as PrismaService)).toThrow(
+          'JWT_SECRET environment variable is required (NFR-SEC-03)',
+        );
+      } finally {
+        process.env.JWT_SECRET = orig;
+      }
+    });
   });
 
   describe('IMS-05.1: Login & Password Hash Verification (FR-AUTH-01, FR-AUTH-04)', () => {
@@ -328,7 +369,9 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       const tamperedJwt = `${parts[0]}.${parts[1]}.tampered_sig_12345`;
 
       await expect(authService.validateToken(tamperedJwt)).rejects.toThrow(UnauthorizedException);
-      await expect(authService.validateToken(tamperedJwt)).rejects.toThrow('Invalid token signature');
+      await expect(authService.validateToken(tamperedJwt)).rejects.toThrow(
+        'Invalid token signature',
+      );
     });
 
     it('renews session with a valid refresh token and rotates it (Done when: refresh works)', async () => {
@@ -380,9 +423,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
         expiresAt: new Date(Date.now() - 1000),
       });
 
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
       await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
         'Refresh token has expired',
       );
@@ -398,11 +439,9 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       // Deactivate user
       mockUser.isActive = false;
 
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
       await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        'User account is deactivated',
+        'Invalid or expired refresh token',
       );
     });
   });
@@ -421,26 +460,31 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       expect(await authService.isTokenRevoked(refreshToken)).toBe(true);
 
       // Subsequent refresh attempt fails with 401
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('revokes user active session when logging out with access token', async () => {
+    it('revokes user active session when logging out with access token and invalidates access token (FR-AUTH-02)', async () => {
       const dto = new LoginDto();
       dto.usernameOrEmail = 'sadia';
       dto.password = 'Smart@1234';
 
       const { accessToken, refreshToken } = await authService.validateAndLogin(dto);
 
+      // Before logout, access token is valid
+      const profile = await authService.validateToken(accessToken);
+      expect(profile.username).toBe('sadia');
+
       // Logout with access token
       await authService.revokeToken(accessToken);
 
-      // Refresh token is marked revoked
+      // Both refresh token and access token must now be revoked (FR-AUTH-02 done-when: old token gets 401)
       expect(await authService.isTokenRevoked(refreshToken)).toBe(true);
-      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
+      await expect(authService.validateToken(accessToken)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.validateToken(accessToken)).rejects.toThrow(
+        'Token has been revoked',
       );
+
+      await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects repeated logout attempts with 401', async () => {
@@ -451,9 +495,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       const { refreshToken } = await authService.validateAndLogin(dto);
       await authService.revokeToken(refreshToken);
 
-      await expect(authService.revokeToken(refreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(authService.revokeToken(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects empty or missing token with 401', async () => {

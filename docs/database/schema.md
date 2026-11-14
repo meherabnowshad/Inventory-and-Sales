@@ -213,9 +213,13 @@ The single walk-in row is seeded after the first administrator, so its `created_
 | audit columns   |                 | NN   | see conventions                                                                  |
 
 ```sql
+-- One CHECK per column (IMS-02.5 Bug 1, migration 20261112000000_po_received_checks).
+-- A single CHECK on both columns let a DRAFT order keep only received_at or only received_by.
 ALTER TABLE purchase_orders
-  ADD CONSTRAINT purchase_orders_received_consistent
-  CHECK ((status = 'RECEIVED') = (received_at IS NOT NULL AND received_by IS NOT NULL));
+  ADD CONSTRAINT purchase_orders_received_at_consistent
+    CHECK ((status = 'RECEIVED') = (received_at IS NOT NULL)),
+  ADD CONSTRAINT purchase_orders_received_by_consistent
+    CHECK ((status = 'RECEIVED') = (received_by IS NOT NULL));
 
 CREATE INDEX purchase_orders_supplier_idx ON purchase_orders (supplier_id);
 CREATE INDEX purchase_orders_status_date  ON purchase_orders (status, order_date DESC);  -- FR-PO-07
@@ -620,3 +624,26 @@ Checked on the local development database:
 | Each `down.sql` undoes its migration and the migration applies again                                                                                     | all three    |
 | `prisma migrate diff` between `schema.prisma` and the database: no difference                                                                            | all three    |
 | `db:down` then `db:setup` on an empty database: all 4 migrations undone and applied again, seed counts unchanged                                         | down scripts |
+
+---
+
+## 9. Fixes after QA testing (IMS-02.5)
+
+| Migration                           | Change                                                                                                                                                   | Bug                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `20261112000000_po_received_checks` | `purchase_orders_received_consistent` is replaced by `purchase_orders_received_at_consistent` and `purchase_orders_received_by_consistent` (section 2.7) | Bug 1, TC-DB-041 (DRAFT order with only `received_at`) |
+
+Cause: the old CHECK compared the status with `received_at AND received_by` together, so a row with only one of the two columns passed when the status was not `RECEIVED`.
+
+Checked on the local development database (each insert in a rolled-back transaction):
+
+| Row                                                      | Result                                               |
+| -------------------------------------------------------- | ---------------------------------------------------- |
+| DRAFT, `received_at` set, `received_by` NULL (TC-DB-041) | rejected by `purchase_orders_received_at_consistent` |
+| DRAFT, `received_at` NULL, `received_by` set             | rejected by `purchase_orders_received_by_consistent` |
+| RECEIVED, `received_at` set, `received_by` NULL          | rejected by `purchase_orders_received_by_consistent` |
+| DRAFT, both NULL; RECEIVED, both set                     | accepted; the two seeded received orders pass        |
+
+`down.sql` restores the old CHECK (as `NOT VALID`) and the migration applies again; `prisma migrate diff` shows no difference.
+
+Not changed here: TC-DB-054 (`payment_method` on a confirmed invoice) follows the BA's point 7 decision (check added in IMS-36), and TC-DB-055 (draft invoice with a number) waits for the BA answer BAQ-DB-15.

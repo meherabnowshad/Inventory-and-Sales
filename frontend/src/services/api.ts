@@ -100,10 +100,9 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshResponse = await axios.post<AuthResponse>(
-          `${API_BASE_URL}/auth/refresh`,
-          { refreshToken },
-        );
+        const refreshResponse = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/refresh`, {
+          refreshToken,
+        });
         const { token, accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
         const finalAccessToken = accessToken || token;
 
