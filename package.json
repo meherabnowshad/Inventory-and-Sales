@@ -21,6 +21,7 @@
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "npm run test --workspace=backend",
     "test:frontend": "npm run test --workspace=frontend",
+    "test:api": "npm run test:api --workspace=backend",
     "setup:env": "node scripts/setup-env.js"
   },
   "devDependencies": {
