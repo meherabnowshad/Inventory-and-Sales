@@ -12,6 +12,7 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
     revokeToken: ReturnType<typeof vi.fn>;
     validateToken: ReturnType<typeof vi.fn>;
     cleanToken: ReturnType<typeof vi.fn>;
+
   };
   let validationPipe: ValidationPipe;
 
