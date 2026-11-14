@@ -8,7 +8,6 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  UseFilters,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService, LoginResponse, RefreshResponse, AuthUserResponse } from './auth.service';
@@ -19,7 +18,6 @@ import { TemporarilyLockedFilter } from './filters/temporarily-locked.filter';
 import { Public } from './decorators/public.decorator';
 
 @Controller('auth')
-@UseFilters(TemporarilyLockedFilter)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
