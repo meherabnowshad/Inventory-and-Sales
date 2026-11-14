@@ -57,7 +57,6 @@ model User {
   returnsProcessed       SalesReturn[]   @relation("ReturnProcessedBy")
   stockMovements         StockMovement[]
   auditLogs              AuditLog[]
-  refreshTokens          RefreshToken[]
   idempotencyKeys        IdempotencyKey[]
   refreshTokens          RefreshToken[]
 
