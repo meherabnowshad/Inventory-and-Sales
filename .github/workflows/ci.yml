@@ -65,6 +65,8 @@ jobs:
         run: npm run lint --workspace=backend
 
       - name: Test Backend
+        env:
+          JWT_SECRET: test_ci_jwt_secret_key_minimum_32_characters_for_testing
         run: npm run test:backend
 
       - name: Compile Backend TypeScript

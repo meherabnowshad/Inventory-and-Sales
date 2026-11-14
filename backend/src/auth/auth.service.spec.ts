@@ -11,6 +11,8 @@ import { LoginDto } from './dto/login.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TemporarilyLockedException } from './exceptions/temporarily-locked.exception';
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_key_minimum_32_characters_long';
+
 interface MockRefreshTokenRow {
   id: bigint;
   userId: bigint;

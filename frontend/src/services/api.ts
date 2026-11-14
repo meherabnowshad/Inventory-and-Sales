@@ -289,22 +289,6 @@ export async function getProfileApi(): Promise<AuthUser | null> {
   }
 }
 
-/**
- * Validates the current token against backend /auth/me (IMS-05.2)
- * If the token has been revoked, triggers 401 unauthorized cleanup.
- */
-export async function getProfileApi(): Promise<AuthUser | null> {
-  try {
-    const response = await apiClient.get<AuthUser>('/auth/me');
-    return response.data;
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error) && error.response && error.response.status === 401) {
-      triggerUnauthorized();
-    }
-    return null;
-  }
-}
-
 export interface ProductItem {
   id: string;
   sku: string;
