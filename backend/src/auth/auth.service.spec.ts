@@ -272,7 +272,9 @@ describe('AuthService (IMS-05.1 & IMS-05.2 | FR-AUTH-01, FR-AUTH-02, FR-AUTH-03,
 
       // Second logout attempt with the same token must fail with 401
       await expect(authService.revokeToken(token)).rejects.toThrow(UnauthorizedException);
-      await expect(authService.revokeToken(token)).rejects.toThrow('Token has already been revoked');
+      await expect(authService.revokeToken(token)).rejects.toThrow(
+        'Token has already been revoked',
+      );
     });
 
     it('rejects expired tokens with HTTP 401 (FR-AUTH-03)', async () => {
