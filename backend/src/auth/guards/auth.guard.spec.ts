@@ -1,30 +1,57 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from '../auth.service';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
-describe('AuthGuard (IMS-05.2 / FR-AUTH-02)', () => {
+describe('AuthGuard (IMS-05.2, IMS-05.5 | FR-AUTH-02, NFR-SEC-01)', () => {
   let authGuard: AuthGuard;
   let mockAuthService: { validateToken: ReturnType<typeof vi.fn> };
+  let mockReflector: { getAllAndOverride: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     mockAuthService = {
       validateToken: vi.fn(),
     };
-    authGuard = new AuthGuard(mockAuthService as unknown as AuthService);
+    mockReflector = {
+      getAllAndOverride: vi.fn().mockReturnValue(false),
+    };
+    authGuard = new AuthGuard(
+      mockAuthService as unknown as AuthService,
+      mockReflector as unknown as Reflector,
+    );
   });
 
   const createMockContext = (authHeader?: string) => {
     const request: { headers: { authorization?: string }; user?: unknown } = {
       headers: { authorization: authHeader },
     };
+    const handler = () => {};
+    class TestController {}
     const context = {
+      getHandler: () => handler,
+      getClass: () => TestController,
       switchToHttp: () => ({
         getRequest: () => request,
       }),
     } as unknown as ExecutionContext;
-    return { context, request };
+    return { context, request, handler, TestController };
   };
+
+  it('allows access without token when route is marked @Public()', async () => {
+    mockReflector.getAllAndOverride.mockReturnValue(true);
+    const { context, handler, TestController } = createMockContext(undefined);
+
+    const result = await authGuard.canActivate(context);
+
+    expect(result).toBe(true);
+    expect(mockReflector.getAllAndOverride).toHaveBeenCalledWith(IS_PUBLIC_KEY, [
+      handler,
+      TestController,
+    ]);
+    expect(mockAuthService.validateToken).not.toHaveBeenCalled();
+  });
 
   it('allows access and attaches user to request for valid bearer token', async () => {
     const mockUser = {

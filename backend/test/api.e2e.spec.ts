@@ -9,6 +9,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', () => {
   let app: INestApplication;
   let createdCategoryId: number;
+  let authToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -24,6 +25,12 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       }),
     );
     await app.init();
+
+    // Authenticate with seeded user (sadia) to obtain Bearer token for protected routes (IMS-05.5)
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ usernameOrEmail: 'sadia', password: 'Smart@1234' });
+    authToken = loginRes.body.accessToken || loginRes.body.token;
   });
 
   afterAll(async () => {
@@ -56,9 +63,26 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
   });
 
+  describe('Authentication Enforcement (IMS-05.5 | NFR-SEC-01)', () => {
+    it('rejects unauthenticated requests to protected endpoints with HTTP 401', async () => {
+      const res = await request(app.getHttpServer()).get('/api/categories');
+      expect(res.status).toBe(401);
+      expect(res.body.message).toBe('Authorization header is missing');
+    });
+
+    it('rejects requests with invalid Bearer token with HTTP 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/categories')
+        .set('Authorization', 'Bearer invalid_token_123');
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('Categories API (/api/categories)', () => {
     it('GET /api/categories returns seeded categories sorted by name', async () => {
-      const res = await request(app.getHttpServer()).get('/api/categories');
+      const res = await request(app.getHttpServer())
+        .get('/api/categories')
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
@@ -74,7 +98,10 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         description: 'Created by automated CI API test suite',
       };
 
-      const res = await request(app.getHttpServer()).post('/api/categories').send(newCategory);
+      const res = await request(app.getHttpServer())
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(newCategory);
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
@@ -88,7 +115,9 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     it('GET /api/categories/:id returns the created category', async () => {
       expect(createdCategoryId).toBeDefined();
 
-      const res = await request(app.getHttpServer()).get(`/api/categories/${createdCategoryId}`);
+      const res = await request(app.getHttpServer())
+        .get(`/api/categories/${createdCategoryId}`)
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(createdCategoryId);
@@ -99,6 +128,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
       const res = await request(app.getHttpServer())
         .patch(`/api/categories/${createdCategoryId}`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({ description: 'Updated by CI API test' });
 
       expect(res.status).toBe(200);
@@ -107,7 +137,9 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
 
     it('GET /api/categories/999999 returns 404 Not Found', async () => {
-      const res = await request(app.getHttpServer()).get('/api/categories/999999');
+      const res = await request(app.getHttpServer())
+        .get('/api/categories/999999')
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(404);
     });
@@ -115,7 +147,9 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
   describe('Inventory API (GET /api/inventory)', () => {
     it('returns seeded products with stock information', async () => {
-      const res = await request(app.getHttpServer()).get('/api/inventory');
+      const res = await request(app.getHttpServer())
+        .get('/api/inventory')
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -126,7 +160,9 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
   describe('Sales API (GET /api/sales)', () => {
     it('returns sales transaction records', async () => {
-      const res = await request(app.getHttpServer()).get('/api/sales');
+      const res = await request(app.getHttpServer())
+        .get('/api/sales')
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);

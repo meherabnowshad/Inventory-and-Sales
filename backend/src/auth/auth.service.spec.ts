@@ -34,6 +34,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
     user: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     refreshToken: {
       create: vi.fn(),
@@ -59,6 +60,21 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
       if (where.id === mockUser.id) return mockUser;
       return null;
     });
+    mockPrisma.user.update.mockImplementation(
+      async ({
+        data,
+      }: {
+        where: { id: bigint };
+        data: Partial<{
+          failedLogins: number;
+          firstFailedAt: Date | null;
+          lockedUntil: Date | null;
+        }>;
+      }) => {
+        Object.assign(mockUser, data);
+        return mockUser;
+      },
+    );
 
     mockPrisma.refreshToken.create.mockImplementation(
       async ({ data }: { data: { userId: bigint; tokenHash: string; expiresAt: Date } }) => {
@@ -353,6 +369,15 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
       );
     });
 
+    it('rejects fake or random unregistered tokens (HTTP 401)', async () => {
+      await expect(authService.validateToken('fake_unregistered_token_123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      await expect(authService.revokeToken('fake_unregistered_token_123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
     it('rejects an expired refresh token (>8 hours) with HTTP 401', async () => {
       const dto = new LoginDto();
       dto.usernameOrEmail = 'sadia';
@@ -428,7 +453,6 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
       await expect(authService.validateToken(accessToken)).rejects.toThrow(
         'Token has been revoked',
       );
-
       await expect(authService.refreshSession(refreshToken)).rejects.toThrow(UnauthorizedException);
     });
 

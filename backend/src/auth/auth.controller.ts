@@ -8,14 +8,18 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseFilters,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService, LoginResponse, RefreshResponse, AuthUserResponse } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { AuthGuard } from './guards/auth.guard';
+import { TemporarilyLockedFilter } from './filters/temporarily-locked.filter';
+import { Public } from './decorators/public.decorator';
 
 @Controller('auth')
+@UseFilters(TemporarilyLockedFilter)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -24,6 +28,7 @@ export class AuthController {
    * IMS-05.1 & IMS-05.3: Authenticates user credentials with Argon2id hash check,
    * returning 15-min access token and 8-hr rotating refresh token (FR-AUTH-01, FR-AUTH-03).
    */
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto): Promise<LoginResponse> {
@@ -34,6 +39,7 @@ export class AuthController {
    * POST /api/auth/refresh
    * IMS-05.3: Renews session using a valid refresh token with token rotation (FR-AUTH-03, NFR-SEC-05).
    */
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
@@ -53,7 +59,10 @@ export class AuthController {
   /**
    * POST /api/auth/logout
    * IMS-05.2: Revokes the bearer/refresh token so it can never be used again (FR-AUTH-02).
+   * Marked @Public() so logout works with a body refreshToken even if access JWT expired,
+   * while still returning 401 if unauthenticated (no token provided).
    */
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(
