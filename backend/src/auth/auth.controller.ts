@@ -8,17 +8,14 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  UseFilters,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService, LoginResponse, RefreshResponse, AuthUserResponse } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { AuthGuard } from './guards/auth.guard';
-import { TemporarilyLockedFilter } from './filters/temporarily-locked.filter';
 
 @Controller('auth')
-@UseFilters(TemporarilyLockedFilter)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

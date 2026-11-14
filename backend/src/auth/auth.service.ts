@@ -4,7 +4,6 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { verify } from '@node-rs/argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
-import { TemporarilyLockedException } from './exceptions/temporarily-locked.exception';
 
 // Precomputed dummy Argon2id hash to mitigate timing-based username enumeration
 const DUMMY_ARGON2_HASH =
@@ -49,11 +48,6 @@ export const ACCESS_TOKEN_TTL_SEC = 15 * 60;
 /** Refresh token lifetime: 8 hours / one work shift (FR-AUTH-03, NFR-SEC-05) */
 export const REFRESH_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 
-/** Failed-login throttle constants (FR-AUTH-05, IMS-05.4) */
-export const MAX_FAILED_LOGINS = 5;
-export const THROTTLE_WINDOW_MS = 15 * 60 * 1000;
-export const LOCK_DURATION_MS = 15 * 60 * 1000;
-
 @Injectable()
 export class AuthService {
   private readonly jwtSecret: string;
@@ -68,13 +62,24 @@ export class AuthService {
         'JWT_SECRET environment variable is required (NFR-SEC-03). Please define it in your .env file.',
       );
     }
+    const nodeEnv = this.configService?.get<string>('NODE_ENV') || process.env.NODE_ENV;
+    if (
+      nodeEnv === 'production' &&
+      (secret.includes('CHANGE_ME') ||
+        secret.includes('change_in_production') ||
+        secret.length < 32)
+    ) {
+      throw new Error(
+        'Insecure or default JWT_SECRET cannot be used in production (NFR-SEC-03). Please configure a strong, random key of at least 32 characters.',
+      );
+    }
     this.jwtSecret = secret;
   }
 
   /**
-   * IMS-05.1 & IMS-05.3 & IMS-05.4: Login endpoint
-   * Validates Argon2id password hash, checks failed-login throttle, issues 15-min JWT access token
-   * + 8-hr rotating refresh token, and persists the refresh token hash in PostgreSQL (FR-AUTH-01, FR-AUTH-03, FR-AUTH-04, FR-AUTH-05, NFR-SEC-05).
+   * IMS-05.1 & IMS-05.3: Login endpoint
+   * Validates Argon2id password hash, issues 15-min JWT access token + 8-hr rotating refresh token,
+   * and persists the refresh token hash in PostgreSQL (FR-AUTH-01, FR-AUTH-03, FR-AUTH-04, NFR-SEC-05).
    */
   async validateAndLogin(dto: LoginDto): Promise<LoginResponse> {
     const identifier = dto.getIdentifier();
@@ -96,14 +101,6 @@ export class AuthService {
       },
     });
 
-    const now = new Date();
-
-    // FR-AUTH-05: Block login (even with right password) while account is temporarily locked
-    if (user && user.lockedUntil && user.lockedUntil > now) {
-      const retryAfterSeconds = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 1000);
-      throw new TemporarilyLockedException(retryAfterSeconds);
-    }
-
     // Timing attack mitigation: always execute Argon2id verification even if user is missing/inactive
     const hashToVerify = user?.passwordHash || DUMMY_ARGON2_HASH;
     let isPasswordValid = false;
@@ -114,25 +111,8 @@ export class AuthService {
     }
 
     // FR-AUTH-01: Wrong login shows one generic error that names no field (prevents username enumeration)
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || !isPasswordValid) {
       throw new UnauthorizedException('Invalid username or password');
-    }
-
-    if (!isPasswordValid) {
-      await this.recordFailedLoginAttempt(user, now);
-      throw new UnauthorizedException('Invalid username or password');
-    }
-
-    // IMS-02.4 point 4: Reset all three throttle columns on a successful login
-    if ((user.failedLogins ?? 0) > 0 || user.firstFailedAt != null || user.lockedUntil != null) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLogins: 0,
-          firstFailedAt: null,
-          lockedUntil: null,
-        },
-      });
     }
 
     const authUser: AuthUserResponse = {
@@ -208,7 +188,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token has expired');
     }
 
-    // Generic error for deactivated user account
+    // Generic error for deactivated user account per review point 7
     if (!record.user || !record.user.isActive) {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
@@ -552,46 +532,5 @@ export class AuthService {
   cleanToken(rawToken: string): string {
     if (!rawToken) return '';
     return rawToken.replace(/^Bearer\s+/i, '').trim();
-  }
-
-  /**
-   * IMS-05.4: Records failed login attempt and locks account if threshold reached (FR-AUTH-05)
-   * Re-reads current database state to prevent race conditions during parallel bursts (Point 8).
-   */
-  private async recordFailedLoginAttempt(
-    user: {
-      id: bigint;
-      failedLogins: number;
-      firstFailedAt: Date | null;
-      lockedUntil: Date | null;
-    },
-    now: Date,
-  ): Promise<void> {
-    const latest = await this.prisma.user.findUnique({
-      where: { id: user.id },
-      select: { failedLogins: true, firstFailedAt: true, lockedUntil: true },
-    });
-
-    const currentFailed = latest?.failedLogins ?? user.failedLogins ?? 0;
-    const currentFirstFailedAt = latest?.firstFailedAt ?? user.firstFailedAt;
-    const currentLockedUntil = latest?.lockedUntil ?? user.lockedUntil;
-
-    const windowExpired =
-      !currentFirstFailedAt || now.getTime() - currentFirstFailedAt.getTime() >= THROTTLE_WINDOW_MS;
-    const priorLockExpired = currentLockedUntil != null && currentLockedUntil <= now;
-
-    const nextFailedLogins = windowExpired || priorLockExpired ? 1 : currentFailed + 1;
-    const nextFirstFailedAt = windowExpired || priorLockExpired ? now : currentFirstFailedAt;
-    const nextLockedUntil =
-      nextFailedLogins >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCK_DURATION_MS) : null;
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        failedLogins: nextFailedLogins,
-        firstFailedAt: nextFirstFailedAt,
-        lockedUntil: nextLockedUntil,
-      },
-    });
   }
 }
