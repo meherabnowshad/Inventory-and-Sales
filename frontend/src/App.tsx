@@ -1,3 +1,4 @@
+import { CategoriesPage } from './pages/CategoriesPage';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -32,6 +33,15 @@ export function App() {
                 }
               >
                 <Route path="inventory" element={<InventoryPage />} />
+              </Route>
+
+              {/* All Roles: Categories (read-only list for everyone; write buttons come in 09.2/09.3) */}
+              <Route
+                element={
+                  <ProtectedRoute allowedRoles={['Administrator', 'Sales Staff', 'Store Staff']} />
+                }
+              >
+                <Route path="categories" element={<CategoriesPage />} />
               </Route>
 
               {/* Administrator & Sales Staff: Sales */}
