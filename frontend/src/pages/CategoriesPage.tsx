@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Tags } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, Loader2, Pencil, Plus, Tags } from 'lucide-react';
+import { CategoryFormModal } from '../components/categories/CategoryFormModal';
+import { useAuth } from '../context/AuthContext';
 import { CategoryItem, CategoryStatusFilter, fetchCategories } from '../services/api';
 
 // Buttons of the filter; "value" is sent to the backend as ?status= (FR-CAT-04, IMS-08.4)
@@ -10,14 +12,23 @@ const FILTERS: { value: CategoryStatusFilter; label: string }[] = [
 ];
 
 // IMS-09.1: category list with product counts and an active/inactive filter.
-// Route /categories is added in App.tsx; create/edit (09.2) and deactivate (09.3) come later.
+// IMS-09.2: "Add category" and per-row "Edit" open components/categories/CategoryFormModal.tsx.
+// Route /categories is added in App.tsx; deactivate (09.3) comes later.
 export function CategoriesPage() {
+  const { hasRole } = useAuth();
+  // Who may add and edit (SRS API table: "read all; write"); Sales Staff only sees the list
+  const canWrite = hasRole(['Administrator', 'Store Staff']);
+
   const [categories, setCategories] = useState<CategoryItem[]>([]); // rows shown in the table
   const [status, setStatus] = useState<CategoryStatusFilter>('all'); // selected filter button
   const [isLoading, setIsLoading] = useState(true); // true while a request is running
   const [error, setError] = useState<string | null>(null); // message shown when the request fails
+  // null = form closed, 'new' = create form, a category = edit form (IMS-09.2)
+  const [formTarget, setFormTarget] = useState<CategoryItem | 'new' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null); // success message after saving
+  const [reloadKey, setReloadKey] = useState(0); // bump to reload the list after a save
 
-  // Runs on first render and every time the filter changes; asks the API for the matching rows
+  // Runs on first render, when the filter changes and after a save; asks the API for the matching rows
   useEffect(() => {
     let active = true; // set to false on cleanup so a slow old response cannot overwrite a newer one
     setIsLoading(true);
@@ -35,17 +46,49 @@ export function CategoriesPage() {
     return () => {
       active = false;
     };
-  }, [status]);
+  }, [status, reloadKey]);
+
+  // Called by CategoryFormModal after a successful save: close the form, show a message, reload
+  const handleSaved = useCallback((message: string) => {
+    setFormTarget(null);
+    setNotice(message);
+    setReloadKey((k) => k + 1);
+  }, []);
 
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Categories</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Product categories with the number of products in each.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Categories</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Product categories with the number of products in each.
+          </p>
+        </div>
+        {canWrite && (
+          <button
+            type="button"
+            onClick={() => {
+              setNotice(null);
+              setFormTarget('new');
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-black text-white rounded-lg text-sm font-semibold shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add category</span>
+          </button>
+        )}
       </div>
+
+      {/* Success message after create / edit */}
+      {notice && (
+        <div
+          role="status"
+          className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-sm text-emerald-800"
+        >
+          {notice}
+        </div>
+      )}
 
       {/* Filter: All / Active / Inactive */}
       <div
@@ -99,6 +142,7 @@ export function CategoriesPage() {
                   <th className="py-3 px-4">Description</th>
                   <th className="py-3 px-4 text-center">Products</th>
                   <th className="py-3 px-4">Status</th>
+                  {canWrite && <th className="py-3 px-4 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -120,6 +164,22 @@ export function CategoriesPage() {
                         {c.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
+                    {canWrite && (
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNotice(null);
+                            setFormTarget(c);
+                          }}
+                          aria-label={`Edit ${c.name}`}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-700 hover:text-black underline"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Edit
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -127,6 +187,14 @@ export function CategoriesPage() {
           </div>
         )}
       </div>
+
+      {formTarget !== null && (
+        <CategoryFormModal
+          category={formTarget === 'new' ? null : formTarget}
+          onClose={() => setFormTarget(null)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }
