@@ -356,3 +356,38 @@ export async function fetchCategories(
   const response = await apiClient.get<CategoryItem[]>('/categories', { params: { status } });
   return response.data;
 }
+
+// IMS-09.2: body of POST /api/categories and PATCH /api/categories/:id (FR-CAT-01, FR-CAT-02)
+export interface CategoryInput {
+  name: string;
+  description?: string;
+}
+
+// Used by components/categories/CategoryFormModal.tsx to create a category
+export async function createCategory(input: CategoryInput): Promise<void> {
+  await apiClient.post('/categories', input);
+}
+
+// Used by the same form in edit mode to rename or change the description
+export async function updateCategory(id: number, input: CategoryInput): Promise<void> {
+  await apiClient.patch(`/categories/${id}`, input);
+}
+
+// What the form needs to know about a failed request
+export interface ApiErrorInfo {
+  status?: number; // HTTP status, e.g. 409 or 400
+  code?: string; // backend code, e.g. CATEGORY_NAME_TAKEN
+  messages: string[]; // human-readable messages from the backend
+}
+
+// Turns any error into ApiErrorInfo; the backend sends either {message: string[]} (400)
+// or {code, message} (409, e.g. CATEGORY_NAME_TAKEN)
+export function readApiError(error: unknown): ApiErrorInfo {
+  if (axios.isAxiosError(error) && error.response) {
+    const data = error.response.data as { code?: string; message?: string | string[] } | undefined;
+    const raw = data?.message;
+    const messages = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    return { status: error.response.status, code: data?.code, messages };
+  }
+  return { messages: [] };
+}
