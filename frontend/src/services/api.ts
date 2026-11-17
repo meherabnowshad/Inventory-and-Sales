@@ -333,3 +333,26 @@ export async function fetchSales(): Promise<SaleItem[]> {
   }
   return [];
 }
+
+// IMS-09.1: one item of GET /api/categories (FR-CAT-04); used by pages/CategoriesPage.tsx
+export interface CategoryItem {
+  id: number;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  productCount: number; // all products in the category, active and inactive (IMS-08.4)
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Values of the ?status= query parameter accepted by the backend (default is 'all')
+export type CategoryStatusFilter = 'all' | 'active' | 'inactive';
+
+// Called by CategoriesPage whenever the filter changes; errors are NOT swallowed,
+// so the page can show an error message (unlike fetchProducts, which falls back to mock data)
+export async function fetchCategories(
+  status: CategoryStatusFilter = 'all',
+): Promise<CategoryItem[]> {
+  const response = await apiClient.get<CategoryItem[]>('/categories', { params: { status } });
+  return response.data;
+}
