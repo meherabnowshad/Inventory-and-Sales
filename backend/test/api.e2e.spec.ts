@@ -51,7 +51,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     it('returns status UP and reports database connected', async () => {
       const res = await request(app.getHttpServer()).get('/api/health');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(999);
       expect(res.body).toMatchObject({
         status: 'UP',
         service: 'Inventory and Sales Backend API (NestJS 10)',
