@@ -1,3 +1,4 @@
+import * as authContext from '../context/AuthContext';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CategoriesPage } from '../pages/CategoriesPage';
@@ -28,6 +29,10 @@ const headsets: CategoryItem = {
 describe('CategoriesPage (IMS-09.1 / FR-CAT-04)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // The page reads the user's role; pretend an Administrator is logged in (can see Add / Edit)
+    vi.spyOn(authContext, 'useAuth').mockReturnValue({
+      hasRole: () => true,
+    } as unknown as ReturnType<typeof authContext.useAuth>);
   });
 
   it('shows each category with its product count and status', async () => {
@@ -76,5 +81,26 @@ describe('CategoriesPage (IMS-09.1 / FR-CAT-04)', () => {
     render(<CategoriesPage />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load categories');
+  });
+
+  it('shows Add and Edit buttons for roles that may write', async () => {
+    vi.spyOn(api, 'fetchCategories').mockResolvedValue([keyboards]);
+    render(<CategoriesPage />);
+
+    await screen.findByText('Keyboards');
+    expect(screen.getByRole('button', { name: 'Add category' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit Keyboards' })).toBeInTheDocument();
+  });
+
+  it('hides Add and Edit buttons for roles that may only read (Sales Staff)', async () => {
+    vi.spyOn(authContext, 'useAuth').mockReturnValue({
+      hasRole: () => false,
+    } as unknown as ReturnType<typeof authContext.useAuth>);
+    vi.spyOn(api, 'fetchCategories').mockResolvedValue([keyboards]);
+    render(<CategoriesPage />);
+
+    await screen.findByText('Keyboards');
+    expect(screen.queryByRole('button', { name: 'Add category' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
   });
 });
