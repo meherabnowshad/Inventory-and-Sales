@@ -327,9 +327,10 @@ export class AuthService {
   }
 
   /**
-   * Validates token authenticity and expiration (FR-AUTH-02, FR-AUTH-03).
-   * Supports both standard 15-min JWT access tokens and database-backed session tokens.
-   * Throws HTTP 401 if token is expired, invalid, or revoked.
+   * Validates token authenticity and expiration (FR-AUTH-02, FR-AUTH-03, NFR-SEC-01, NFR-SEC-05).
+   * Validates standard 15-min JWT access tokens.
+   * Throws HTTP 401 if token is expired, invalid, revoked, or not a JWT access token.
+   * Note: Refresh tokens are rejected here to enforce that only access tokens can access protected resources (TC-API-081).
    */
   async validateToken(rawToken: string): Promise<AuthUserResponse> {
     const token = this.cleanToken(rawToken);
@@ -371,36 +372,8 @@ export class AuthService {
       };
     }
 
-    // 2. Check if token is stored in refresh_tokens table
-    const tokenHash = this.hashToken(token);
-    const record = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash },
-      include: {
-        user: {
-          include: { role: true },
-        },
-      },
-    });
-
-    if (!record) {
-      throw new UnauthorizedException('Invalid or expired token');
-    }
-
-    if (record.revokedAt !== null) {
-      throw new UnauthorizedException('Token has been revoked');
-    }
-
-    if (record.expiresAt <= new Date() || !record.user || !record.user.isActive) {
-      throw new UnauthorizedException('Token has expired');
-    }
-
-    return {
-      id: Number(record.user.id),
-      name: record.user.name,
-      username: record.user.username,
-      email: record.user.email,
-      role: record.user.role.name,
-    };
+    // Reject non-JWT tokens (including refresh tokens) with 401 per TC-API-081 & NFR-SEC-05
+    throw new UnauthorizedException('Invalid or expired token');
   }
 
   /**

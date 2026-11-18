@@ -369,6 +369,29 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02, FR
       );
     });
 
+    it('rejects a refresh token when used as a bearer token in validateToken (TC-API-081, NFR-SEC-01, NFR-SEC-05)', async () => {
+      const dto = new LoginDto();
+      dto.usernameOrEmail = 'sadia';
+      dto.password = 'Smart@1234';
+
+      const loginRes = await authService.validateAndLogin(dto);
+      const refreshToken = loginRes.refreshToken;
+
+      // Access token validates successfully
+      const profile = await authService.validateToken(loginRes.accessToken);
+      expect(profile.username).toBe('sadia');
+
+      // Refresh token MUST NOT be accepted by validateToken (protected resource endpoints)
+      await expect(authService.validateToken(refreshToken)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.validateToken(refreshToken)).rejects.toThrow(
+        'Invalid or expired token',
+      );
+
+      // But refresh token is still valid for refreshSession
+      const refreshed = await authService.refreshSession(refreshToken);
+      expect(refreshed.accessToken).toBeDefined();
+    });
+
     it('rejects fake or random unregistered tokens (HTTP 401)', async () => {
       await expect(authService.validateToken('fake_unregistered_token_123')).rejects.toThrow(
         UnauthorizedException,
