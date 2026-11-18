@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Pencil, Plus, Tags } from 'lucide-react';
+import { AlertTriangle, Ban, Loader2, Pencil, Plus, Tags, Trash2 } from 'lucide-react';
+import { CategoryConfirmDialog } from '../components/categories/CategoryConfirmDialog';
 import { CategoryFormModal } from '../components/categories/CategoryFormModal';
 import { useAuth } from '../context/AuthContext';
 import { CategoryItem, CategoryStatusFilter, fetchCategories } from '../services/api';
@@ -13,7 +14,8 @@ const FILTERS: { value: CategoryStatusFilter; label: string }[] = [
 
 // IMS-09.1: category list with product counts and an active/inactive filter.
 // IMS-09.2: "Add category" and per-row "Edit" open components/categories/CategoryFormModal.tsx.
-// Route /categories is added in App.tsx; deactivate (09.3) comes later.
+// IMS-09.3: per-row "Deactivate" and "Delete" open components/categories/CategoryConfirmDialog.tsx.
+// Route /categories is added in App.tsx.
 export function CategoriesPage() {
   const { hasRole } = useAuth();
   // Who may add and edit (SRS API table: "read all; write"); Sales Staff only sees the list
@@ -25,6 +27,11 @@ export function CategoriesPage() {
   const [error, setError] = useState<string | null>(null); // message shown when the request fails
   // null = form closed, 'new' = create form, a category = edit form (IMS-09.2)
   const [formTarget, setFormTarget] = useState<CategoryItem | 'new' | null>(null);
+  // null = no dialog; otherwise the row and the button that was clicked (IMS-09.3)
+  const [confirmTarget, setConfirmTarget] = useState<{
+    category: CategoryItem;
+    action: 'deactivate' | 'delete';
+  } | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // success message after saving
   const [reloadKey, setReloadKey] = useState(0); // bump to reload the list after a save
 
@@ -51,6 +58,13 @@ export function CategoriesPage() {
   // Called by CategoryFormModal after a successful save: close the form, show a message, reload
   const handleSaved = useCallback((message: string) => {
     setFormTarget(null);
+    setNotice(message);
+    setReloadKey((k) => k + 1);
+  }, []);
+
+  // Called by CategoryConfirmDialog after a successful Deactivate or Delete: same steps as handleSaved
+  const handleConfirmed = useCallback((message: string) => {
+    setConfirmTarget(null);
     setNotice(message);
     setReloadKey((k) => k + 1);
   }, []);
@@ -166,18 +180,47 @@ export function CategoriesPage() {
                     </td>
                     {canWrite && (
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNotice(null);
-                            setFormTarget(c);
-                          }}
-                          aria-label={`Edit ${c.name}`}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-700 hover:text-black underline"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          Edit
-                        </button>
+                        <div className="inline-flex items-center gap-4">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNotice(null);
+                              setFormTarget(c);
+                            }}
+                            aria-label={`Edit ${c.name}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-700 hover:text-black underline"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Edit
+                          </button>
+                          {/* Only active rows can be deactivated; there is no Reactivate in 09.3 */}
+                          {c.isActive && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNotice(null);
+                                setConfirmTarget({ category: c, action: 'deactivate' });
+                              }}
+                              aria-label={`Deactivate ${c.name}`}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-700 hover:text-black underline"
+                            >
+                              <Ban className="w-3 h-3" />
+                              Deactivate
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNotice(null);
+                              setConfirmTarget({ category: c, action: 'delete' });
+                            }}
+                            aria-label={`Delete ${c.name}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 hover:text-rose-900 underline"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -193,6 +236,15 @@ export function CategoriesPage() {
           category={formTarget === 'new' ? null : formTarget}
           onClose={() => setFormTarget(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {confirmTarget !== null && (
+        <CategoryConfirmDialog
+          category={confirmTarget.category}
+          action={confirmTarget.action}
+          onClose={() => setConfirmTarget(null)}
+          onDone={handleConfirmed}
         />
       )}
     </div>
