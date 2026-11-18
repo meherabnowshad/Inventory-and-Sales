@@ -1,7 +1,6 @@
 # Inventory and Sales Management System (IMS)
 
-[![CI - main](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml)
-[![CI - master](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml)
+[![CI Pipeline](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/meherabnowshad/Inventory-and-Sales/actions/workflows/ci.yml)
 
 ## 📋 Table of Contents
 

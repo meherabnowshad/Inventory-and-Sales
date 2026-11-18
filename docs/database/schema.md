@@ -264,11 +264,15 @@ CREATE INDEX po_lines_product_idx ON purchase_order_lines (product_id);
 | audit columns     |                 | NN   | see conventions                                                           |
 
 ```sql
+-- One CHECK per column (IMS-02.5 TC-DB-055, migration 20261118000000_invoice_draft_checks).
+-- A single CHECK on all three columns let a DRAFT invoice keep only one of them.
 ALTER TABLE sales_invoices
-  ADD CONSTRAINT sales_invoices_confirmed_consistent
-  CHECK ((status = 'CONFIRMED') = (invoice_number IS NOT NULL
-                                   AND confirmed_at IS NOT NULL
-                                   AND confirmed_by IS NOT NULL));
+  ADD CONSTRAINT sales_invoices_invoice_number_consistent
+    CHECK ((status = 'DRAFT') = (invoice_number IS NULL)),
+  ADD CONSTRAINT sales_invoices_confirmed_at_consistent
+    CHECK ((status = 'DRAFT') = (confirmed_at IS NULL)),
+  ADD CONSTRAINT sales_invoices_confirmed_by_consistent
+    CHECK ((status = 'DRAFT') = (confirmed_by IS NULL));
 
 CREATE SEQUENCE invoice_seq;   -- gaps allowed on rollback, numbers never reused (Q19)
 CREATE INDEX sales_invoices_customer_idx ON sales_invoices (customer_id);
@@ -629,9 +633,10 @@ Checked on the local development database:
 
 ## 9. Fixes after QA testing (IMS-02.5)
 
-| Migration                           | Change                                                                                                                                                   | Bug                                                    |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `20261112000000_po_received_checks` | `purchase_orders_received_consistent` is replaced by `purchase_orders_received_at_consistent` and `purchase_orders_received_by_consistent` (section 2.7) | Bug 1, TC-DB-041 (DRAFT order with only `received_at`) |
+| Migration                             | Change                                                                                                                                                                                               | Bug                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `20261112000000_po_received_checks`   | `purchase_orders_received_consistent` is replaced by `purchase_orders_received_at_consistent` and `purchase_orders_received_by_consistent` (section 2.7)                                             | Bug 1, TC-DB-041 (DRAFT order with only `received_at`) |
+| `20261118000000_invoice_draft_checks` | `sales_invoices_confirmed_consistent` is replaced by `sales_invoices_invoice_number_consistent`, `sales_invoices_confirmed_at_consistent` and `sales_invoices_confirmed_by_consistent` (section 2.9) | TC-DB-055 (DRAFT invoice with only `invoice_number`)   |
 
 Cause: the old CHECK compared the status with `received_at AND received_by` together, so a row with only one of the two columns passed when the status was not `RECEIVED`.
 
@@ -646,4 +651,21 @@ Checked on the local development database (each insert in a rolled-back transact
 
 `down.sql` restores the old CHECK (as `NOT VALID`) and the migration applies again; `prisma migrate diff` shows no difference.
 
-Not changed here: TC-DB-054 (`payment_method` on a confirmed invoice) follows the BA's point 7 decision (check added in IMS-36), and TC-DB-055 (draft invoice with a number) waits for the BA answer BAQ-DB-15.
+Not changed here: TC-DB-054 (`payment_method` on a confirmed invoice) follows the BA's point 7 decision (check added in IMS-36) and is marked Deferred.
+
+### Invoice CHECKs (TC-DB-055)
+
+Cause: the old CHECK compared the status with `invoice_number`, `confirmed_at` and `confirmed_by` together, so a DRAFT invoice with only one of them passed. BA answer of 17 Nov: a draft has none of the three, any other status has all three; `invoice_number` stays unique.
+
+Checked on the local development database (each insert in a rolled-back transaction):
+
+| Row                                          | Result                                                 |
+| -------------------------------------------- | ------------------------------------------------------ |
+| DRAFT, only `invoice_number` set (TC-DB-055) | rejected by `sales_invoices_invoice_number_consistent` |
+| DRAFT, only `confirmed_at` set               | rejected by `sales_invoices_confirmed_at_consistent`   |
+| DRAFT, only `confirmed_by` set               | rejected by `sales_invoices_confirmed_by_consistent`   |
+| CONFIRMED, all three set                     | accepted                                               |
+| DRAFT, all three empty                       | accepted                                               |
+| CONFIRMED, only `invoice_number` set         | rejected by `sales_invoices_confirmed_at_consistent`   |
+
+`down.sql` restores the old CHECK (as `NOT VALID`) and the migration applies again.
