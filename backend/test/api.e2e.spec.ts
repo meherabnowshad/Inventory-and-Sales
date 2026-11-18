@@ -155,6 +155,119 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
   });
 
+  describe('Category delete and deactivate rules (IMS-08.3 | FR-CAT-03)', () => {
+    const tag = `IMS083-${Date.now()}`;
+    let prisma: PrismaService;
+    let adminId: bigint;
+
+    // Creates a category through the API and returns its id
+    const makeCategory = async (suffix: string): Promise<number> => {
+      const res = await request(app.getHttpServer())
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: `${tag} ${suffix}` });
+      return res.body.id;
+    };
+
+    // Adds a product straight in the database (there is no products API yet)
+    const makeProduct = (categoryId: number, suffix: string, isActive: boolean) =>
+      prisma.product.create({
+        data: {
+          sku: `${tag}-${suffix}`,
+          name: `${tag} ${suffix}`,
+          categoryId,
+          purchasePrice: '10.00',
+          sellingPrice: '15.00',
+          isActive,
+          createdBy: adminId,
+        },
+      });
+
+    beforeAll(async () => {
+      prisma = app.get(PrismaService);
+      adminId = (await prisma.user.findFirstOrThrow({ where: { username: 'sadia' } })).id;
+    });
+
+    // remove everything this block created: products first, then the categories
+    afterAll(async () => {
+      await prisma.product.deleteMany({ where: { sku: { startsWith: tag } } });
+      await prisma.category.deleteMany({ where: { name: { startsWith: tag } } });
+    });
+
+    it('deactivating a category that products use is allowed (200)', async () => {
+      const id = await makeCategory('deactivate');
+      await makeProduct(id, 'd1', true);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/categories/${id}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ isActive: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.isActive).toBe(false);
+    });
+
+    it('deleting a category with an active product returns 409 CATEGORY_IN_USE', async () => {
+      const id = await makeCategory('active-product');
+      await makeProduct(id, 'a1', true);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/api/categories/${id}`)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('CATEGORY_IN_USE');
+      expect(res.body.productCount).toBe(1);
+    });
+
+    it('deleting a category with only an inactive product returns 409 CATEGORY_IN_USE', async () => {
+      const id = await makeCategory('inactive-product');
+      await makeProduct(id, 'i1', false);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/api/categories/${id}`)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('CATEGORY_IN_USE');
+    });
+
+    it('deleting an unused category returns 204 and the category is gone', async () => {
+      const id = await makeCategory('unused');
+
+      const res = await request(app.getHttpServer())
+        .delete(`/api/categories/${id}`)
+        .set('Authorization', `Bearer ${authToken}`);
+      expect(res.status).toBe(204);
+
+      const again = await request(app.getHttpServer())
+        .get(`/api/categories/${id}`)
+        .set('Authorization', `Bearer ${authToken}`);
+      expect(again.status).toBe(404);
+    });
+
+    it('deleting a category that does not exist returns 404', async () => {
+      const res = await request(app.getHttpServer())
+        .delete('/api/categories/999999')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('productCount in the list includes inactive products (IMS-08.4)', async () => {
+      const id = await makeCategory('count');
+      await makeProduct(id, 'c1', true);
+      await makeProduct(id, 'c2', false);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/categories')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      const row = res.body.find((c: { id: number }) => c.id === id);
+      expect(row.productCount).toBe(2);
+    });
+  });
+
   describe('Inventory API (GET /api/inventory)', () => {
     it('returns seeded products with stock information', async () => {
       const res = await request(app.getHttpServer())
