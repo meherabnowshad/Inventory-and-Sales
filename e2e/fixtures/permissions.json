@@ -1,14 +1,14 @@
 {
   "Administrator": {
-    "menu": ["Dashboard", "Inventory", "Sales & Orders"],
+    "menu": ["Dashboard", "Inventory", "Categories", "Sales & Orders"],
     "blocked": []
   },
   "Sales Staff": {
-    "menu": ["Inventory", "Sales & Orders"],
+    "menu": ["Inventory", "Categories", "Sales & Orders"],
     "blocked": ["/"]
   },
   "Store Staff": {
-    "menu": ["Inventory"],
+    "menu": ["Inventory", "Categories"],
     "blocked": ["/", "/sales"]
   }
 }

@@ -1,6 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 
-export type NavLabel = 'Dashboard' | 'Inventory' | 'Sales & Orders';
+export type NavLabel = 'Dashboard' | 'Inventory' | 'Categories' | 'Sales & Orders';
 
 export class NavigationPage {
   readonly nav: Locator;
