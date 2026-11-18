@@ -1,0 +1,10 @@
+{
+  "admin": { "username": "sadia", "email": "sadia@smartmart.local", "role": "Administrator", "homePath": "/" },
+  "sales": { "username": "rafi", "email": "rafi@smartmart.local", "role": "Sales Staff", "homePath": "/sales" },
+  "store": { "username": "mitu", "email": "mitu@smartmart.local", "role": "Store Staff", "homePath": "/inventory" },
+  "invalid": {
+    "unknownUser": { "username": "nouser", "password": "Wrong@1234" },
+    "wrongPassword": { "username": "sadia", "password": "Wrong@1234" },
+    "shortPassword": { "username": "sadia", "password": "abc" }
+  }
+}
