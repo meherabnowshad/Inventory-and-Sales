@@ -20,7 +20,7 @@ export class UpdateCategoryDto {
   description?: string;
 
   // Deactivate (false) or reactivate (true), FR-CAT-03. Only true/false allowed
-  // The "cannot deactivate while products use it" check is added later in IMS-08.3
+  // Always allowed, even while products use the category (BA answer, IMS-08.3); only DELETE is blocked
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
