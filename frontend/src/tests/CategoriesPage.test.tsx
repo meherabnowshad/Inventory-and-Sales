@@ -1,5 +1,5 @@
 import * as authContext from '../context/AuthContext';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CategoriesPage } from '../pages/CategoriesPage';
 import * as api from '../services/api';
@@ -102,5 +102,53 @@ describe('CategoriesPage (IMS-09.1 / FR-CAT-04)', () => {
     await screen.findByText('Keyboards');
     expect(screen.queryByRole('button', { name: 'Add category' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
+    // IMS-09.3: Deactivate and Delete are write actions too
+    expect(screen.queryByRole('button', { name: /^Deactivate / })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument();
+  });
+
+  // IMS-09.3 (FR-CAT-03): Deactivate with confirmation; the confirm dialog itself is tested in CategoryConfirmDialog.test.tsx
+  it('shows Deactivate only on active rows, and Delete on every row', async () => {
+    vi.spyOn(api, 'fetchCategories').mockResolvedValue([keyboards, headsets]);
+    render(<CategoriesPage />);
+
+    await screen.findByText('Keyboards');
+    expect(screen.getByRole('button', { name: 'Deactivate Keyboards' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deactivate Headsets' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Keyboards' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Headsets' })).toBeInTheDocument();
+  });
+
+  it('opens the confirmation dialog on Deactivate and sends nothing until confirmed', async () => {
+    vi.spyOn(api, 'fetchCategories').mockResolvedValue([keyboards]);
+    const patch = vi.spyOn(api, 'setCategoryActive').mockResolvedValue();
+    render(<CategoriesPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Deactivate Keyboards' }));
+
+    expect(screen.getByRole('heading', { name: 'Deactivate category?' })).toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('after confirming Deactivate: closes the dialog, shows the message and reloads the list', async () => {
+    const list = vi.spyOn(api, 'fetchCategories').mockResolvedValue([keyboards]);
+    vi.spyOn(api, 'setCategoryActive').mockResolvedValue();
+    render(<CategoriesPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Deactivate Keyboards' }));
+    list.mockResolvedValue([{ ...keyboards, isActive: false }]); // what the API returns after the change
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+
+    expect(await screen.findByText('Category "Keyboards" deactivated.')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // "Inactive" is also a filter button, so check the status badge inside the row
+    await waitFor(() =>
+      expect(screen.getByText('Keyboards').closest('tr')).toHaveTextContent(/Keyboards.*Inactive/),
+    );
+    expect(list).toHaveBeenCalledTimes(2);
   });
 });
