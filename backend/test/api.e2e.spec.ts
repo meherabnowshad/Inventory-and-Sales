@@ -78,88 +78,22 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
   });
 
-  describe('Categories API (/api/categories)', () => {
-    it('GET /api/categories returns seeded categories sorted by name', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/categories')
-        .set('Authorization', `Bearer ${authToken}`);
-
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBeGreaterThanOrEqual(1);
-
-      const names = res.body.map((c: { name: string }) => c.name);
-      expect(names).toContain('Keyboards');
-    });
-
-    it('POST /api/categories creates a new category in the database', async () => {
-      const newCategory = {
-        name: `CI Test Category ${Date.now()}`,
-        description: 'Created by automated CI API test suite',
-      };
-
-      const res = await request(app.getHttpServer())
-        .post('/api/categories')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(newCategory);
-
-      expect(res.status).toBe(201);
-      expect(res.body).toHaveProperty('id');
-      expect(res.body.name).toBe(newCategory.name);
-      expect(res.body.description).toBe(newCategory.description);
-      expect(res.body.isActive).toBe(true);
-
-      createdCategoryId = res.body.id;
-    });
-
-    it('GET /api/categories/:id returns the created category', async () => {
-      expect(createdCategoryId).toBeDefined();
-
-      const res = await request(app.getHttpServer())
-        .get(`/api/categories/${createdCategoryId}`)
-        .set('Authorization', `Bearer ${authToken}`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.id).toBe(createdCategoryId);
-    });
-
-    it('PATCH /api/categories/:id updates the category details', async () => {
-      expect(createdCategoryId).toBeDefined();
-
-      const res = await request(app.getHttpServer())
-        .patch(`/api/categories/${createdCategoryId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ description: 'Updated by CI API test' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.id).toBe(createdCategoryId);
-      expect(res.body.description).toBe('Updated by CI API test');
-    });
-
-    it('GET /api/categories/999999 returns 404 Not Found', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/categories/999999')
-        .set('Authorization', `Bearer ${authToken}`);
-
-      expect(res.status).toBe(404);
-    });
-  });
-
-  describe('Category delete and deactivate rules (IMS-08.3 | FR-CAT-03)', () => {
-    const tag = `IMS083-${Date.now()}`;
+  describe('Category API test cases (IMS-08.5 | FR-CAT-01–04)', () => {
+    const tag = `IMS085-${Date.now()}`;
     let prisma: PrismaService;
     let adminId: bigint;
+    let createdCatId: number;
 
-    // Creates a category through the API and returns its id
-    const makeCategory = async (suffix: string): Promise<number> => {
-      const res = await request(app.getHttpServer())
+    const makeCategory = async (
+      suffix: string,
+      extra: Record<string, unknown> = {},
+    ): Promise<request.Response> => {
+      return request(app.getHttpServer())
         .post('/api/categories')
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ name: `${tag} ${suffix}` });
-      return res.body.id;
+        .send({ name: `${tag} ${suffix}`, ...extra });
     };
 
-    // Adds a product straight in the database (there is no products API yet)
     const makeProduct = (categoryId: number, suffix: string, isActive: boolean) =>
       prisma.product.create({
         data: {
@@ -178,83 +112,316 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       adminId = (await prisma.user.findFirstOrThrow({ where: { username: 'sadia' } })).id;
     });
 
-    // remove everything this block created: products first, then the categories
     afterAll(async () => {
-      await prisma.product.deleteMany({ where: { sku: { startsWith: tag } } });
-      await prisma.category.deleteMany({ where: { name: { startsWith: tag } } });
+      await prisma.product.deleteMany({ where: { sku: { startsWith: tag } } }).catch(() => {});
+      await prisma.category.deleteMany({ where: { name: { startsWith: tag } } }).catch(() => {});
+      if (createdCatId) {
+        await prisma.category.delete({ where: { id: createdCatId } }).catch(() => {});
+      }
     });
 
-    it('deactivating a category that products use is allowed (200)', async () => {
-      const id = await makeCategory('deactivate');
-      await makeProduct(id, 'd1', true);
+    describe('FR-CAT-01: Category Creation, Read & Validation', () => {
+      it('POST /api/categories creates category with trimmed name and default isActive: true', async () => {
+        const rawName = `  ${tag} Padded Category  `;
+        const res = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: rawName, description: 'Trimming test' });
 
-      const res = await request(app.getHttpServer())
-        .patch(`/api/categories/${id}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ isActive: false });
+        expect(res.status).toBe(201);
+        expect(res.body).toHaveProperty('id');
+        expect(res.body.name).toBe(`${tag} Padded Category`);
+        expect(res.body.description).toBe('Trimming test');
+        expect(res.body.isActive).toBe(true);
+        expect(res.body).toHaveProperty('createdAt');
+        expect(res.body).toHaveProperty('updatedAt');
 
-      expect(res.status).toBe(200);
-      expect(res.body.isActive).toBe(false);
+        createdCatId = res.body.id;
+      });
+
+      it('POST /api/categories rejects empty or whitespace-only name with 400 Bad Request', async () => {
+        const resEmpty = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: '' });
+        expect(resEmpty.status).toBe(400);
+
+        const resSpaces = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: '     ' });
+        expect(resSpaces.status).toBe(400);
+      });
+
+      it('POST /api/categories rejects name exceeding 80 characters with 400 Bad Request', async () => {
+        const longName = 'A'.repeat(81);
+        const res = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: longName });
+        expect(res.status).toBe(400);
+      });
+
+      it('POST /api/categories captures authenticated user ID in database createdBy column', async () => {
+        expect(createdCatId).toBeDefined();
+        const dbRecord = await prisma.category.findUnique({ where: { id: createdCatId } });
+        expect(dbRecord).not.toBeNull();
+        expect(dbRecord?.createdBy).toBe(adminId);
+      });
+
+      it('GET /api/categories/:id returns the category details', async () => {
+        expect(createdCatId).toBeDefined();
+        const res = await request(app.getHttpServer())
+          .get(`/api/categories/${createdCatId}`)
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.id).toBe(createdCatId);
+        expect(res.body.name).toBe(`${tag} Padded Category`);
+      });
+
+      it('GET /api/categories/999999 returns 404 Not Found', async () => {
+        const res = await request(app.getHttpServer())
+          .get('/api/categories/999999')
+          .set('Authorization', `Bearer ${authToken}`);
+        expect(res.status).toBe(404);
+      });
     });
 
-    it('deleting a category with an active product returns 409 CATEGORY_IN_USE', async () => {
-      const id = await makeCategory('active-product');
-      await makeProduct(id, 'a1', true);
+    describe('FR-CAT-02: Unique Category Name Enforcement (BR-12)', () => {
+      it('POST /api/categories rejects duplicate category name with 409 CATEGORY_NAME_TAKEN', async () => {
+        const name = `${tag} Unique Name`;
+        const first = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name });
+        expect(first.status).toBe(201);
 
-      const res = await request(app.getHttpServer())
-        .delete(`/api/categories/${id}`)
-        .set('Authorization', `Bearer ${authToken}`);
+        const duplicate = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name });
+        expect(duplicate.status).toBe(409);
+        expect(duplicate.body.code).toBe('CATEGORY_NAME_TAKEN');
+      });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe('CATEGORY_IN_USE');
-      expect(res.body.productCount).toBe(1);
+      it('POST /api/categories rejects duplicate category name case-insensitively with 409', async () => {
+        const baseName = `${tag} Case Test`;
+        await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: baseName.toUpperCase() });
+
+        const duplicate = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: baseName.toLowerCase() });
+        expect(duplicate.status).toBe(409);
+        expect(duplicate.body.code).toBe('CATEGORY_NAME_TAKEN');
+      });
+
+      it('POST /api/categories rejects duplicate category name with surrounding whitespace with 409', async () => {
+        const baseName = `${tag} Space Dup`;
+        await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: baseName });
+
+        const duplicate = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: `   ${baseName}   ` });
+        expect(duplicate.status).toBe(409);
+        expect(duplicate.body.code).toBe('CATEGORY_NAME_TAKEN');
+      });
+
+      it('PATCH /api/categories/:id rejects renaming to an existing category name with 409', async () => {
+        const catA = await makeCategory('Rename Target A');
+        const catB = await makeCategory('Rename Target B');
+
+        const conflict = await request(app.getHttpServer())
+          .patch(`/api/categories/${catB.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: catA.body.name });
+
+        expect(conflict.status).toBe(409);
+        expect(conflict.body.code).toBe('CATEGORY_NAME_TAKEN');
+      });
+
+      it('PATCH /api/categories/:id allows updating fields without changing name (no self-conflict)', async () => {
+        const cat = await makeCategory('Self Update');
+        const res = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: cat.body.name, description: 'Updated description' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.description).toBe('Updated description');
+      });
     });
 
-    it('deleting a category with only an inactive product returns 409 CATEGORY_IN_USE', async () => {
-      const id = await makeCategory('inactive-product');
-      await makeProduct(id, 'i1', false);
+    describe('FR-CAT-03: Deactivate & In-Use Delete Guard Rules', () => {
+      it('deactivating an in-use category is allowed (200 OK)', async () => {
+        const cat = await makeCategory('deact-inuse');
+        await makeProduct(cat.body.id, 'd1', true);
 
-      const res = await request(app.getHttpServer())
-        .delete(`/api/categories/${id}`)
-        .set('Authorization', `Bearer ${authToken}`);
+        const res = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: false });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe('CATEGORY_IN_USE');
+        expect(res.status).toBe(200);
+        expect(res.body.isActive).toBe(false);
+      });
+
+      it('deleting a category with an active product returns 409 CATEGORY_IN_USE', async () => {
+        const cat = await makeCategory('act-prod');
+        await makeProduct(cat.body.id, 'ap1', true);
+
+        const res = await request(app.getHttpServer())
+          .delete(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('CATEGORY_IN_USE');
+        expect(res.body.productCount).toBe(1);
+      });
+
+      it('deleting a category with only an inactive product returns 409 CATEGORY_IN_USE', async () => {
+        const cat = await makeCategory('inact-prod');
+        await makeProduct(cat.body.id, 'ip1', false);
+
+        const res = await request(app.getHttpServer())
+          .delete(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('CATEGORY_IN_USE');
+      });
+
+      it('deleting an unused category returns 204 and category is removed', async () => {
+        const cat = await makeCategory('unused-del');
+
+        const res = await request(app.getHttpServer())
+          .delete(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`);
+        expect(res.status).toBe(204);
+
+        const check = await request(app.getHttpServer())
+          .get(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`);
+        expect(check.status).toBe(404);
+      });
+
+      it('deleting a non-existent category returns 404', async () => {
+        const res = await request(app.getHttpServer())
+          .delete('/api/categories/999999')
+          .set('Authorization', `Bearer ${authToken}`);
+        expect(res.status).toBe(404);
+      });
     });
 
-    it('deleting an unused category returns 204 and the category is gone', async () => {
-      const id = await makeCategory('unused');
+    describe('FR-CAT-04: Product Counts & Status Filtering', () => {
+      it('GET /api/categories returns productCount for every category', async () => {
+        const res = await request(app.getHttpServer())
+          .get('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`);
 
-      const res = await request(app.getHttpServer())
-        .delete(`/api/categories/${id}`)
-        .set('Authorization', `Bearer ${authToken}`);
-      expect(res.status).toBe(204);
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+        expect(res.body.length).toBeGreaterThanOrEqual(1);
+        for (const cat of res.body) {
+          expect(typeof cat.productCount).toBe('number');
+        }
+      });
 
-      const again = await request(app.getHttpServer())
-        .get(`/api/categories/${id}`)
-        .set('Authorization', `Bearer ${authToken}`);
-      expect(again.status).toBe(404);
-    });
+      it('GET /api/categories includes productCount: 0 for categories with no products', async () => {
+        const cat = await makeCategory('zero-count');
+        const res = await request(app.getHttpServer())
+          .get('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`);
 
-    it('deleting a category that does not exist returns 404', async () => {
-      const res = await request(app.getHttpServer())
-        .delete('/api/categories/999999')
-        .set('Authorization', `Bearer ${authToken}`);
+        const row = res.body.find((c: { id: number }) => c.id === cat.body.id);
+        expect(row).toBeDefined();
+        expect(row.productCount).toBe(0);
+      });
 
-      expect(res.status).toBe(404);
-    });
+      it('GET /api/categories includes both active and inactive products in productCount', async () => {
+        const cat = await makeCategory('mixed-count');
+        await makeProduct(cat.body.id, 'm1', true);
+        await makeProduct(cat.body.id, 'm2', true);
+        await makeProduct(cat.body.id, 'm3', false);
 
-    it('productCount in the list includes inactive products (IMS-08.4)', async () => {
-      const id = await makeCategory('count');
-      await makeProduct(id, 'c1', true);
-      await makeProduct(id, 'c2', false);
+        const res = await request(app.getHttpServer())
+          .get('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`);
 
-      const res = await request(app.getHttpServer())
-        .get('/api/categories')
-        .set('Authorization', `Bearer ${authToken}`);
+        const row = res.body.find((c: { id: number }) => c.id === cat.body.id);
+        expect(row).toBeDefined();
+        expect(row.productCount).toBe(3);
+      });
 
-      const row = res.body.find((c: { id: number }) => c.id === id);
-      expect(row.productCount).toBe(2);
+      it('GET /api/categories?status=active returns only active categories', async () => {
+        const res = await request(app.getHttpServer())
+          .get('/api/categories?status=active')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.length).toBeGreaterThanOrEqual(1);
+        expect(res.body.every((c: { isActive: boolean }) => c.isActive === true)).toBe(true);
+      });
+
+      it('GET /api/categories?status=inactive returns only inactive categories', async () => {
+        // Ensure at least one inactive category exists
+        const cat = await makeCategory('inact-filter');
+        await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: false });
+
+        const res = await request(app.getHttpServer())
+          .get('/api/categories?status=inactive')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.length).toBeGreaterThanOrEqual(1);
+        expect(res.body.every((c: { isActive: boolean }) => c.isActive === false)).toBe(true);
+      });
+
+      it('GET /api/categories?status=all returns all categories regardless of active status', async () => {
+        const resAll = await request(app.getHttpServer())
+          .get('/api/categories?status=all')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        const resDefault = await request(app.getHttpServer())
+          .get('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(resAll.status).toBe(200);
+        expect(resAll.body.length).toBe(resDefault.body.length);
+      });
+
+      it('GET /api/categories?status=invalid returns 400 Bad Request', async () => {
+        const res = await request(app.getHttpServer())
+          .get('/api/categories?status=invalid')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toContain(
+          'status must be one of the following values: active, inactive, all',
+        );
+      });
+
+      it('GET /api/categories returns categories sorted alphabetically by name ASC', async () => {
+        const res = await request(app.getHttpServer())
+          .get('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(res.status).toBe(200);
+        const names: string[] = res.body.map((c: { name: string }) => c.name);
+        const sortedNames = [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+        expect(names).toEqual(sortedNames);
+      });
     });
   });
 
