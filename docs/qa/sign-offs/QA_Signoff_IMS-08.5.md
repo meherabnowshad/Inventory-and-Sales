@@ -26,44 +26,48 @@ Implement comprehensive end-to-end and integration API test coverage for all Cat
 ## 2. Test Execution Matrix (24 New Category Tests + 5 Baseline Tests)
 
 ### FR-CAT-01: Category Creation, Read & Validation
-| Test Case | Scenario | Expected Result | Actual Result | Status |
-|:---|:---|:---|:---|:---:|
+
+| Test Case   | Scenario                                    | Expected Result                                    | Actual Result             |  Status  |
+| :---------- | :------------------------------------------ | :------------------------------------------------- | :------------------------ | :------: |
 | **TC-01.1** | Create category with surrounding whitespace | Trimmed name stored, `isActive: true`, 201 Created | Name trimmed, 201 Created | **PASS** |
-| **TC-01.2** | Reject empty or whitespace-only name | HTTP 400 Bad Request | HTTP 400 Bad Request | **PASS** |
-| **TC-01.3** | Reject name exceeding 80 characters | HTTP 400 Bad Request | HTTP 400 Bad Request | **PASS** |
-| **TC-01.4** | Capture `created_by` audit column | PostgreSQL row matches authenticated user ID | ID verified in DB | **PASS** |
-| **TC-01.5** | GET `/api/categories/:id` existing ID | HTTP 200 OK with complete category payload | HTTP 200 OK | **PASS** |
-| **TC-01.6** | GET `/api/categories/999999` non-existent | HTTP 404 Not Found | HTTP 404 Not Found | **PASS** |
+| **TC-01.2** | Reject empty or whitespace-only name        | HTTP 400 Bad Request                               | HTTP 400 Bad Request      | **PASS** |
+| **TC-01.3** | Reject name exceeding 80 characters         | HTTP 400 Bad Request                               | HTTP 400 Bad Request      | **PASS** |
+| **TC-01.4** | Capture `created_by` audit column           | PostgreSQL row matches authenticated user ID       | ID verified in DB         | **PASS** |
+| **TC-01.5** | GET `/api/categories/:id` existing ID       | HTTP 200 OK with complete category payload         | HTTP 200 OK               | **PASS** |
+| **TC-01.6** | GET `/api/categories/999999` non-existent   | HTTP 404 Not Found                                 | HTTP 404 Not Found        | **PASS** |
 
 ### FR-CAT-02: Unique Category Name Enforcement (BR-12)
-| Test Case | Scenario | Expected Result | Actual Result | Status |
-|:---|:---|:---|:---|:---:|
-| **TC-02.1** | Exact duplicate name submission | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
+
+| Test Case   | Scenario                              | Expected Result                           | Actual Result     |  Status  |
+| :---------- | :------------------------------------ | :---------------------------------------- | :---------------- | :------: |
+| **TC-02.1** | Exact duplicate name submission       | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
 | **TC-02.2** | Case-insensitive duplicate submission | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
-| **TC-02.3** | Duplicate with surrounding spaces | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
-| **TC-02.4** | PATCH rename to an existing category | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
-| **TC-02.5** | PATCH category with its own name | HTTP 200 OK (no self-conflict) | HTTP 200 OK | **PASS** |
+| **TC-02.3** | Duplicate with surrounding spaces     | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
+| **TC-02.4** | PATCH rename to an existing category  | HTTP 409 Conflict (`CATEGORY_NAME_TAKEN`) | HTTP 409 Conflict | **PASS** |
+| **TC-02.5** | PATCH category with its own name      | HTTP 200 OK (no self-conflict)            | HTTP 200 OK       | **PASS** |
 
 ### FR-CAT-03: Deactivate & In-Use Delete Guard Rules
-| Test Case | Scenario | Expected Result | Actual Result | Status |
-|:---|:---|:---|:---|:---:|
-| **TC-03.1** | Deactivate in-use category via PATCH | HTTP 200 OK, `isActive: false` | HTTP 200 OK | **PASS** |
-| **TC-03.2** | DELETE category with active product | HTTP 409 Conflict (`CATEGORY_IN_USE`) | HTTP 409 Conflict | **PASS** |
-| **TC-03.3** | DELETE category with inactive product | HTTP 409 Conflict (`CATEGORY_IN_USE`) | HTTP 409 Conflict | **PASS** |
-| **TC-03.4** | DELETE unused category | HTTP 204 No Content; record deleted | HTTP 204 No Content | **PASS** |
-| **TC-03.5** | DELETE non-existent category ID | HTTP 404 Not Found | HTTP 404 Not Found | **PASS** |
+
+| Test Case   | Scenario                              | Expected Result                       | Actual Result       |  Status  |
+| :---------- | :------------------------------------ | :------------------------------------ | :------------------ | :------: |
+| **TC-03.1** | Deactivate in-use category via PATCH  | HTTP 200 OK, `isActive: false`        | HTTP 200 OK         | **PASS** |
+| **TC-03.2** | DELETE category with active product   | HTTP 409 Conflict (`CATEGORY_IN_USE`) | HTTP 409 Conflict   | **PASS** |
+| **TC-03.3** | DELETE category with inactive product | HTTP 409 Conflict (`CATEGORY_IN_USE`) | HTTP 409 Conflict   | **PASS** |
+| **TC-03.4** | DELETE unused category                | HTTP 204 No Content; record deleted   | HTTP 204 No Content | **PASS** |
+| **TC-03.5** | DELETE non-existent category ID       | HTTP 404 Not Found                    | HTTP 404 Not Found  | **PASS** |
 
 ### FR-CAT-04: Product Counts & Status Filtering
-| Test Case | Scenario | Expected Result | Actual Result | Status |
-|:---|:---|:---|:---|:---:|
-| **TC-04.1** | List response contains `productCount` | Every item includes integer `productCount` | Verified on all items | **PASS** |
-| **TC-04.2** | Unused category reports `productCount: 0` | Integer 0 returned | Integer 0 returned | **PASS** |
-| **TC-04.3** | Combined active + inactive product count | Returns sum of all active and inactive items | Verified (e.g. 3) | **PASS** |
-| **TC-04.4** | Query filter `?status=active` | Returns only categories with `isActive === true` | 100% active | **PASS** |
-| **TC-04.5** | Query filter `?status=inactive` | Returns only categories with `isActive === false` | 100% inactive | **PASS** |
-| **TC-04.6** | Query filter `?status=all` | Returns combined active and inactive categories | Matches default list | **PASS** |
-| **TC-04.7** | Query filter `?status=invalid` | HTTP 400 Bad Request with validation message | HTTP 400 Bad Request | **PASS** |
-| **TC-04.8** | Alphabetical sorting | Array sorted by `name ASC` | Verified ASC | **PASS** |
+
+| Test Case   | Scenario                                  | Expected Result                                   | Actual Result         |  Status  |
+| :---------- | :---------------------------------------- | :------------------------------------------------ | :-------------------- | :------: |
+| **TC-04.1** | List response contains `productCount`     | Every item includes integer `productCount`        | Verified on all items | **PASS** |
+| **TC-04.2** | Unused category reports `productCount: 0` | Integer 0 returned                                | Integer 0 returned    | **PASS** |
+| **TC-04.3** | Combined active + inactive product count  | Returns sum of all active and inactive items      | Verified (e.g. 3)     | **PASS** |
+| **TC-04.4** | Query filter `?status=active`             | Returns only categories with `isActive === true`  | 100% active           | **PASS** |
+| **TC-04.5** | Query filter `?status=inactive`           | Returns only categories with `isActive === false` | 100% inactive         | **PASS** |
+| **TC-04.6** | Query filter `?status=all`                | Returns combined active and inactive categories   | Matches default list  | **PASS** |
+| **TC-04.7** | Query filter `?status=invalid`            | HTTP 400 Bad Request with validation message      | HTTP 400 Bad Request  | **PASS** |
+| **TC-04.8** | Alphabetical sorting                      | Array sorted by `name ASC`                        | Verified ASC          | **PASS** |
 
 ---
 
