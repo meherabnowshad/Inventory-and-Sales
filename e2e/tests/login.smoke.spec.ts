@@ -79,3 +79,4 @@ test.describe('Login smoke', { tag: '@smoke' }, () => {
     await expect(page).toHaveURL(/\/login/);
   });
 });
+// QA check: trivial change
