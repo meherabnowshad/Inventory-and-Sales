@@ -186,6 +186,58 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
           .set('Authorization', `Bearer ${authToken}`);
         expect(res.status).toBe(404);
       });
+
+      it('POST /api/categories allows creating a category without a description', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: `${tag} No Desc Category` });
+
+        expect(res.status).toBe(201);
+        expect(res.body.name).toBe(`${tag} No Desc Category`);
+        expect(res.body.description).toBeNull();
+      });
+
+      it('POST /api/categories accepts description with 255 chars but rejects 256 chars with 400', async () => {
+        const desc255 = 'D'.repeat(255);
+        const okRes = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: `${tag} Desc 255`, description: desc255 });
+        expect(okRes.status).toBe(201);
+        expect(okRes.body.description).toBe(desc255);
+
+        const desc256 = 'D'.repeat(256);
+        const failRes = await request(app.getHttpServer())
+          .post('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: `${tag} Desc 256`, description: desc256 });
+        expect(failRes.status).toBe(400);
+      });
+
+      it('PATCH /api/categories/:id rejects empty name or name exceeding 80 characters with 400', async () => {
+        const cat = await makeCategory('Patch Validation');
+
+        const emptyRes = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: '' });
+        expect(emptyRes.status).toBe(400);
+
+        const longRes = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: 'L'.repeat(81) });
+        expect(longRes.status).toBe(400);
+      });
+
+      it('PATCH /api/categories/999999 returns 404 Not Found', async () => {
+        const res = await request(app.getHttpServer())
+          .patch('/api/categories/999999')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: `${tag} Nonexistent` });
+        expect(res.status).toBe(404);
+      });
     });
 
     describe('FR-CAT-02: Unique Category Name Enforcement (BR-12)', () => {
@@ -258,6 +310,30 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         expect(res.status).toBe(200);
         expect(res.body.description).toBe('Updated description');
       });
+
+      it('PATCH /api/categories/:id renames category to a new free name and keeps linked products', async () => {
+        const cat = await makeCategory('Rename Free Target');
+        await makeProduct(cat.body.id, 'rf1', true);
+        await makeProduct(cat.body.id, 'rf2', true);
+
+        const newName = `${tag} Renamed Free Name`;
+        const renameRes = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ name: newName });
+
+        expect(renameRes.status).toBe(200);
+        expect(renameRes.body.name).toBe(newName);
+
+        // Verify productCount remains preserved in GET /api/categories
+        const listRes = await request(app.getHttpServer())
+          .get('/api/categories')
+          .set('Authorization', `Bearer ${authToken}`);
+        const updatedInList = listRes.body.find((c: { id: number }) => c.id === cat.body.id);
+        expect(updatedInList).toBeDefined();
+        expect(updatedInList.name).toBe(newName);
+        expect(updatedInList.productCount).toBe(2);
+      });
     });
 
     describe('FR-CAT-03: Deactivate & In-Use Delete Guard Rules', () => {
@@ -272,6 +348,33 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
         expect(res.status).toBe(200);
         expect(res.body.isActive).toBe(false);
+      });
+
+      it('reactivating an inactive category is allowed (200 OK and status updates)', async () => {
+        const cat = await makeCategory('reactivate-test');
+
+        // Deactivate
+        const deactRes = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: false });
+        expect(deactRes.status).toBe(200);
+        expect(deactRes.body.isActive).toBe(false);
+
+        // Reactivate
+        const reactRes = await request(app.getHttpServer())
+          .patch(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: true });
+        expect(reactRes.status).toBe(200);
+        expect(reactRes.body.isActive).toBe(true);
+
+        // Verify in GET /api/categories/:id
+        const getRes = await request(app.getHttpServer())
+          .get(`/api/categories/${cat.body.id}`)
+          .set('Authorization', `Bearer ${authToken}`);
+        expect(getRes.status).toBe(200);
+        expect(getRes.body.isActive).toBe(true);
       });
 
       it('deleting a category with an active product returns 409 CATEGORY_IN_USE', async () => {
