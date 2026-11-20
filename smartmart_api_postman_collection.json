@@ -34,14 +34,9 @@
         "url": {
           "raw": "http://localhost:5001/api/health",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "health"
-          ]
+          "path": ["api", "health"]
         }
       }
     },
@@ -81,15 +76,9 @@
         "url": {
           "raw": "http://localhost:5001/api/auth/login",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "auth",
-            "login"
-          ]
+          "path": ["api", "auth", "login"]
         }
       }
     },
@@ -101,14 +90,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories"
-          ]
+          "path": ["api", "categories"]
         }
       }
     },
@@ -120,14 +104,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories?status=active",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories"
-          ],
+          "path": ["api", "categories"],
           "query": [
             {
               "key": "status",
@@ -145,14 +124,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories?status=inactive",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories"
-          ],
+          "path": ["api", "categories"],
           "query": [
             {
               "key": "status",
@@ -170,14 +144,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories?status=all",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories"
-          ],
+          "path": ["api", "categories"],
           "query": [
             {
               "key": "status",
@@ -195,14 +164,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories?status=invalid",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories"
-          ],
+          "path": ["api", "categories"],
           "query": [
             {
               "key": "status",
@@ -229,14 +193,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories"
-          ]
+          "path": ["api", "categories"]
         }
       }
     },
@@ -248,15 +207,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories/1",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories",
-            "1"
-          ]
+          "path": ["api", "categories", "1"]
         }
       }
     },
@@ -277,15 +230,9 @@
         "url": {
           "raw": "http://localhost:5001/api/categories/1",
           "protocol": "http",
-          "host": [
-            "localhost"
-          ],
+          "host": ["localhost"],
           "port": "5001",
-          "path": [
-            "api",
-            "categories",
-            "1"
-          ]
+          "path": ["api", "categories", "1"]
         }
       }
     }
