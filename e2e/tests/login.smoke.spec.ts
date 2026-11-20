@@ -72,10 +72,10 @@ test.describe('Login smoke', { tag: '@smoke' }, () => {
     }
   }
 
-  // FR-AUTH-02: sign out returns to the login page
+  // FR-AUTH-02: sign out returns to the login page (intentionally broken for CI failure verification)
   test('user can sign out and returns to the login page', async ({ page }) => {
     await loginAs(page, USERS.admin);
     await new NavigationPage(page).logout();
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/intentionally-failed-route/);
   });
 });
