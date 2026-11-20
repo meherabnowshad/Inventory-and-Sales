@@ -373,21 +373,40 @@ export async function updateCategory(id: number, input: CategoryInput): Promise<
   await apiClient.patch(`/categories/${id}`, input);
 }
 
+// IMS-09.3: Deactivate sends only isActive; used by components/categories/CategoryConfirmDialog.tsx
+// Backend always allows it, even while products use the category (FR-CAT-03, BR-11)
+export async function setCategoryActive(id: number, isActive: boolean): Promise<void> {
+  await apiClient.patch(`/categories/${id}`, { isActive });
+}
+
+// IMS-09.3: used by the same dialog in Delete mode; 204 when deleted, 404 if gone,
+// 409 CATEGORY_IN_USE (with productCount) while any product, active or inactive, uses it
+export async function deleteCategory(id: number): Promise<void> {
+  await apiClient.delete(`/categories/${id}`);
+}
+
 // What the form needs to know about a failed request
 export interface ApiErrorInfo {
   status?: number; // HTTP status, e.g. 409 or 400
   code?: string; // backend code, e.g. CATEGORY_NAME_TAKEN
   messages: string[]; // human-readable messages from the backend
+  productCount?: number; // only on 409 CATEGORY_IN_USE; read by CategoryConfirmDialog (IMS-09.3)
 }
 
 // Turns any error into ApiErrorInfo; the backend sends either {message: string[]} (400)
-// or {code, message} (409, e.g. CATEGORY_NAME_TAKEN)
+// or {code, message} (409, e.g. CATEGORY_NAME_TAKEN); CATEGORY_IN_USE also carries productCount
 export function readApiError(error: unknown): ApiErrorInfo {
   if (axios.isAxiosError(error) && error.response) {
-    const data = error.response.data as { code?: string; message?: string | string[] } | undefined;
+    const data = error.response.data as
+      { code?: string; message?: string | string[]; productCount?: number } | undefined;
     const raw = data?.message;
     const messages = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    return { status: error.response.status, code: data?.code, messages };
+    return {
+      status: error.response.status,
+      code: data?.code,
+      messages,
+      productCount: data?.productCount,
+    };
   }
   return { messages: [] };
 }
