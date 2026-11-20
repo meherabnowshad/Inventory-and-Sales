@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b8a1d19d-9f35-4511-8d29-d91bcba88507",
     "name": "SmartMart Inventory & Sales API",
-    "description": "API collection for testing SmartMart backend (IMS-08.3 and Core APIs)",
+    "description": "API collection for testing SmartMart backend (IMS-08.3, IMS-08.4, and Core APIs)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -94,7 +94,7 @@
       }
     },
     {
-      "name": "3. Get Categories",
+      "name": "3. Get Categories (with productCount) - IMS-08.4",
       "request": {
         "method": "GET",
         "header": [],
@@ -113,7 +113,107 @@
       }
     },
     {
-      "name": "4. Create Category",
+      "name": "4. Filter Categories: Active (?status=active) - IMS-08.4",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5001/api/categories?status=active",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5001",
+          "path": [
+            "api",
+            "categories"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "active"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Filter Categories: Inactive (?status=inactive) - IMS-08.4",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5001/api/categories?status=inactive",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5001",
+          "path": [
+            "api",
+            "categories"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "inactive"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Filter Categories: All (?status=all) - IMS-08.4",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5001/api/categories?status=all",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5001",
+          "path": [
+            "api",
+            "categories"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "all"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "7. Filter Validation Error (?status=invalid -> 400) - IMS-08.4",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5001/api/categories?status=invalid",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5001",
+          "path": [
+            "api",
+            "categories"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "invalid"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "8. Create Category",
       "request": {
         "method": "POST",
         "header": [
@@ -141,7 +241,7 @@
       }
     },
     {
-      "name": "5. Delete In-Use Category Guard (IMS-08.3)",
+      "name": "9. Delete In-Use Category Guard (IMS-08.3)",
       "request": {
         "method": "DELETE",
         "header": [],
@@ -161,7 +261,7 @@
       }
     },
     {
-      "name": "6. Deactivate In-Use Category (IMS-08.3)",
+      "name": "10. Deactivate In-Use Category (IMS-08.3)",
       "request": {
         "method": "PATCH",
         "header": [
