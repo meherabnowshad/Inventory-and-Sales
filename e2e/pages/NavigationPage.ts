@@ -1,6 +1,8 @@
 import { Page, Locator } from '@playwright/test';
 
-export type NavLabel = 'Dashboard' | 'Inventory' | 'Categories' | 'Sales & Orders';
+// Every sidebar item the app can show. Add new menu items here only; NavLabel follows.
+export const NAV_LABELS = ['Dashboard', 'Inventory', 'Categories', 'Sales & Orders'] as const;
+export type NavLabel = (typeof NAV_LABELS)[number];
 
 export class NavigationPage {
   readonly nav: Locator;
