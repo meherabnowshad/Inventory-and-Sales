@@ -10,6 +10,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
   let app: INestApplication;
   let createdCategoryId: number;
   let authToken: string;
+  let refreshToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -31,6 +32,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       .post('/api/auth/login')
       .send({ usernameOrEmail: 'sadia', password: 'Smart@1234' });
     authToken = loginRes.body.accessToken || loginRes.body.token;
+    refreshToken = loginRes.body.refreshToken;
   });
 
   afterAll(async () => {
@@ -75,6 +77,14 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .get('/api/categories')
         .set('Authorization', 'Bearer invalid_token_123');
       expect(res.status).toBe(401);
+    });
+
+    it('rejects requests using a refresh token as Bearer token on protected endpoints with HTTP 401 (TC-API-081 | NFR-SEC-01, NFR-SEC-05)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/categories')
+        .set('Authorization', `Bearer ${refreshToken}`);
+      expect(res.status).toBe(401);
+      expect(res.body.message).toBe('Invalid or expired token');
     });
   });
 
