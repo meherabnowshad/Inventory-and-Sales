@@ -381,7 +381,7 @@ export class AuthService {
       });
 
       if (!user || !user.isActive) {
-        throw new UnauthorizedException('Invalid or expired token');
+        throw new UnauthorizedException('Account is deactivated');
       }
 
       // FR-AUTH-02: Verify session has not been revoked (e.g. after logout)

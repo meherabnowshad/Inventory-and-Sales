@@ -5,12 +5,14 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { UserRole } from '../src/auth/constants/roles';
 
 describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', () => {
   let app: INestApplication;
   let createdCategoryId: number;
   let authToken: string;
   let refreshToken: string;
+  let roleTokens: Record<UserRole, string>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -33,6 +35,18 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       .send({ usernameOrEmail: 'sadia', password: 'Smart@1234' });
     authToken = loginRes.body.accessToken || loginRes.body.token;
     refreshToken = loginRes.body.refreshToken;
+
+    roleTokens = {} as Record<UserRole, string>;
+    for (const [role, username] of [
+      [UserRole.Administrator, 'sadia'],
+      [UserRole.SalesStaff, 'rafi'],
+      [UserRole.StoreStaff, 'mitu'],
+    ] as const) {
+      const roleLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: username, password: 'Smart@1234' });
+      roleTokens[role] = roleLogin.body.accessToken || roleLogin.body.token;
+    }
   });
 
   afterAll(async () => {
@@ -85,6 +99,82 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .set('Authorization', `Bearer ${refreshToken}`);
       expect(res.status).toBe(401);
       expect(res.body.message).toBe('Invalid or expired token');
+    });
+  });
+
+  describe('Role Permission Matrix (IMS-07)', () => {
+    const roles = [UserRole.Administrator, UserRole.SalesStaff, UserRole.StoreStaff];
+
+    it.each(
+      roles.flatMap((role) => [
+        [role, 'health', 200],
+        [role, 'auth/me', 200],
+        [role, 'categories', 200],
+        [role, 'inventory', 200],
+        [role, 'sales', role === UserRole.StoreStaff ? 403 : 200],
+      ]),
+    )('%s can access /api/%s with status %i', async (role, endpoint, expectedStatus) => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/${endpoint}`)
+        .set('Authorization', `Bearer ${roleTokens[role as UserRole]}`);
+
+      expect(res.status).toBe(expectedStatus);
+      if (expectedStatus === 403) {
+        expect(res.body).toEqual({
+          statusCode: 403,
+          code: 'FORBIDDEN_ROLE',
+          message: 'You do not have permission to perform this action',
+        });
+      }
+    });
+
+    it.each([
+      [UserRole.Administrator, 201],
+      [UserRole.SalesStaff, 403],
+      [UserRole.StoreStaff, 201],
+    ])('role %s category POST status %i', async (role, expectedStatus) => {
+      const res = await request(app.getHttpServer())
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${roleTokens[role as UserRole]}`)
+        .send({ name: `IMS07 Matrix ${role} ${Date.now()}` });
+
+      expect(res.status).toBe(expectedStatus);
+      if (expectedStatus === 403) {
+        expect(res.body.code).toBe('FORBIDDEN_ROLE');
+      } else if (res.body.id) {
+        const prisma = app.get(PrismaService);
+        await prisma.category.delete({ where: { id: res.body.id } });
+      }
+    });
+
+    it('forbidden Sales Staff POST, PATCH, and DELETE do not change categories', async () => {
+      const prisma = app.get(PrismaService);
+      const category = await prisma.category.findFirstOrThrow();
+      const before = await prisma.category.count();
+
+      const postRes = await request(app.getHttpServer())
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${roleTokens[UserRole.SalesStaff]}`)
+        .send({ name: `Forbidden IMS07 ${Date.now()}` });
+      expect(postRes.status).toBe(403);
+      expect(postRes.body.code).toBe('FORBIDDEN_ROLE');
+      expect(await prisma.category.count()).toBe(before);
+
+      const patchRes = await request(app.getHttpServer())
+        .patch(`/api/categories/${category.id}`)
+        .set('Authorization', `Bearer ${roleTokens[UserRole.SalesStaff]}`)
+        .send({ description: 'Forbidden role patch' });
+      expect(patchRes.status).toBe(403);
+      expect(patchRes.body.code).toBe('FORBIDDEN_ROLE');
+      expect((await prisma.category.findUniqueOrThrow({ where: { id: category.id } })).description)
+        .toBe(category.description);
+
+      const deleteRes = await request(app.getHttpServer())
+        .delete(`/api/categories/${category.id}`)
+        .set('Authorization', `Bearer ${roleTokens[UserRole.SalesStaff]}`);
+      expect(deleteRes.status).toBe(403);
+      expect(deleteRes.body.code).toBe('FORBIDDEN_ROLE');
+      expect(await prisma.category.findUnique({ where: { id: category.id } })).not.toBeNull();
     });
   });
 
