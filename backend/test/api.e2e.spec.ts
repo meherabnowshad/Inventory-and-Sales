@@ -166,8 +166,9 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .send({ description: 'Forbidden role patch' });
       expect(patchRes.status).toBe(403);
       expect(patchRes.body.code).toBe('FORBIDDEN_ROLE');
-      expect((await prisma.category.findUniqueOrThrow({ where: { id: category.id } })).description)
-        .toBe(category.description);
+      expect(
+        (await prisma.category.findUniqueOrThrow({ where: { id: category.id } })).description,
+      ).toBe(category.description);
 
       const deleteRes = await request(app.getHttpServer())
         .delete(`/api/categories/${category.id}`)
@@ -355,6 +356,134 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
       const row = res.body.find((c: { id: number }) => c.id === id);
       expect(row.productCount).toBe(2);
+    });
+  });
+
+  describe('Users API (/api/users)', () => {
+    const tag = `IMS07-${Date.now()}`;
+    const createdUsernames: string[] = [];
+    let createdUserId: number;
+
+    afterAll(async () => {
+      const prisma = app.get(PrismaService);
+      if (createdUsernames.length > 0) {
+        const users = await prisma.user.findMany({
+          where: { username: { in: createdUsernames } },
+          select: { id: true },
+        });
+        for (const user of users) {
+          await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+          await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+        }
+      }
+    });
+
+    it('rafi and mitu get 403 on every users route', async () => {
+      for (const role of [UserRole.SalesStaff, UserRole.StoreStaff]) {
+        const token = roleTokens[role];
+        const requests = [
+          request(app.getHttpServer()).get('/api/users').set('Authorization', `Bearer ${token}`),
+          request(app.getHttpServer()).get('/api/users/1').set('Authorization', `Bearer ${token}`),
+          request(app.getHttpServer())
+            .post('/api/users')
+            .set('Authorization', `Bearer ${token}`)
+            .send({}),
+          request(app.getHttpServer())
+            .patch('/api/users/1')
+            .set('Authorization', `Bearer ${token}`)
+            .send({}),
+        ];
+        for (const pending of requests) {
+          const res = await pending;
+          expect(res.status).toBe(403);
+          expect(res.body.code).toBe('FORBIDDEN_ROLE');
+        }
+      }
+    });
+
+    it('sadia can create a user and the created user can log in', async () => {
+      const username = `${tag}-create`.toLowerCase();
+      createdUsernames.push(username);
+      const temporaryPassword = 'Temporary!1';
+
+      const createRes = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'IMS07 Created User',
+          username,
+          email: `${tag}@example.local`.toLowerCase(),
+          role: UserRole.SalesStaff,
+          temporaryPassword,
+        });
+
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.username).toBe(username);
+      expect(createRes.body.mustResetPw).toBe(true);
+      expect(createRes.body).not.toHaveProperty('passwordHash');
+      expect(createRes.body).not.toHaveProperty('temporaryPassword');
+      createdUserId = createRes.body.id;
+
+      const loginRes = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: username, password: temporaryPassword });
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.user.username).toBe(username);
+    });
+
+    it('sadia can edit and deactivate the created user', async () => {
+      expect(createdUserId).toBeDefined();
+
+      const editRes = await request(app.getHttpServer())
+        .patch(`/api/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: 'IMS07 Updated User', role: UserRole.StoreStaff });
+      expect(editRes.status).toBe(200);
+      expect(editRes.body.name).toBe('IMS07 Updated User');
+      expect(editRes.body.role).toBe(UserRole.StoreStaff);
+
+      const deactivateRes = await request(app.getHttpServer())
+        .patch(`/api/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ isActive: false });
+      expect(deactivateRes.status).toBe(200);
+      expect(deactivateRes.body.isActive).toBe(false);
+    });
+
+    it('duplicate username and email differing only by case return 409', async () => {
+      const username = `${tag}-duplicate`.toLowerCase();
+      const email = `${tag}-duplicate@example.local`.toLowerCase();
+      createdUsernames.push(username);
+      const body = {
+        name: 'Duplicate Test',
+        username,
+        email,
+        role: UserRole.StoreStaff,
+        temporaryPassword: 'Temporary!1',
+      };
+      const first = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(body);
+      expect(first.status).toBe(201);
+
+      const secondUsername = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ ...body, email: `${tag}-other@example.local`, username: username.toUpperCase() });
+      expect(secondUsername.status).toBe(409);
+      expect(secondUsername.body.code).toBe('USERNAME_TAKEN');
+
+      const secondEmail = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          ...body,
+          username: `${tag}-other`,
+          email: email.toUpperCase(),
+        });
+      expect(secondEmail.status).toBe(409);
+      expect(secondEmail.body.code).toBe('EMAIL_TAKEN');
     });
   });
 
