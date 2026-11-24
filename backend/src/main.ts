@@ -1,10 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
+
+  // Parse Cookie headers into req.cookies for HttpOnly auth tokens
+  app.use(cookieParser());
 
   // Set global API prefix: /api
   app.setGlobalPrefix('api');

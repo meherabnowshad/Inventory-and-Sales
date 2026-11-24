@@ -56,6 +56,41 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
       expect(mockAuthService.validateAndLogin).toHaveBeenCalledWith(dto);
       expect(result).toEqual(mockResponse);
     });
+
+    it('sets HttpOnly cookie with refreshToken when Response object is provided', async () => {
+      const mockResponse = {
+        user: {
+          id: 1,
+          name: 'Sadia Rahman',
+          username: 'sadia',
+          email: 'sadia@smartmart.local',
+          role: 'Administrator',
+        },
+        accessToken: 'mock_jwt_access_token',
+        refreshToken: 'mock_refresh_token_cookie',
+        token: 'mock_jwt_access_token',
+      };
+      mockAuthService.validateAndLogin.mockResolvedValue(mockResponse);
+
+      const dto = new LoginDto();
+      dto.usernameOrEmail = 'sadia';
+      dto.password = 'Smart@1234';
+
+      const mockRes = {
+        cookie: vi.fn(),
+      } as any;
+
+      await authController.login(dto, mockRes);
+
+      expect(mockRes.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'mock_refresh_token_cookie',
+        expect.objectContaining({
+          httpOnly: true,
+          path: '/api/auth',
+        }),
+      );
+    });
   });
 
   describe('refresh (IMS-05.3 / FR-AUTH-03)', () => {
@@ -104,6 +139,43 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
       expect(result).toEqual(mockResponse);
     });
 
+    it('delegates refresh token from HttpOnly cookie when body and header are omitted', async () => {
+      const mockResponse = {
+        user: {
+          id: 1,
+          name: 'Sadia Rahman',
+          username: 'sadia',
+          email: 'sadia@smartmart.local',
+          role: 'Administrator',
+        },
+        accessToken: 'new_jwt_access_token',
+        refreshToken: 'rotated_refresh_token',
+        token: 'new_jwt_access_token',
+      };
+
+      mockAuthService.refreshSession.mockResolvedValue(mockResponse);
+
+      const mockReq = {
+        cookies: { refreshToken: 'cookie_refresh_token_123' },
+      } as any;
+      const mockRes = {
+        cookie: vi.fn(),
+      } as any;
+
+      const result = await authController.refresh(undefined, undefined, mockReq, mockRes);
+
+      expect(mockAuthService.refreshSession).toHaveBeenCalledWith('cookie_refresh_token_123');
+      expect(mockRes.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'rotated_refresh_token',
+        expect.objectContaining({
+          httpOnly: true,
+          path: '/api/auth',
+        }),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
     it('throws UnauthorizedException if no refresh token is provided', async () => {
       await expect(authController.refresh(undefined, undefined)).rejects.toThrow(
         UnauthorizedException,
@@ -129,6 +201,21 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
       });
 
       expect(mockAuthService.revokeToken).toHaveBeenCalledWith('smartmart_refresh_123');
+      expect(result).toEqual({ message: 'Logged out successfully' });
+    });
+
+    it('revokes token from HttpOnly cookie and clears cookie upon logout', async () => {
+      const mockReq = {
+        cookies: { refreshToken: 'cookie_logout_token_123' },
+      } as any;
+      const mockRes = {
+        clearCookie: vi.fn(),
+      } as any;
+
+      const result = await authController.logout(undefined, undefined, mockReq, mockRes);
+
+      expect(mockAuthService.revokeToken).toHaveBeenCalledWith('cookie_logout_token_123');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('refreshToken', { path: '/api/auth' });
       expect(result).toEqual({ message: 'Logged out successfully' });
     });
 

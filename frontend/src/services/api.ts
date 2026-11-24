@@ -7,6 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 8000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -100,9 +101,11 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshResponse = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/refresh`, {
-          refreshToken,
-        });
+        const refreshResponse = await axios.post<AuthResponse>(
+          `${API_BASE_URL}/auth/refresh`,
+          refreshToken ? { refreshToken } : {},
+          { withCredentials: true },
+        );
         const { token, accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
         const finalAccessToken = accessToken || token;
 
@@ -237,9 +240,12 @@ export async function loginApi(credentials: LoginCredentials): Promise<AuthRespo
 
 export async function refreshSessionApi(): Promise<AuthResponse | null> {
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-  if (!refreshToken) return null;
   try {
-    const res = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+    const res = await axios.post<AuthResponse>(
+      `${API_BASE_URL}/auth/refresh`,
+      refreshToken ? { refreshToken } : {},
+      { withCredentials: true },
+    );
     const { token, accessToken, refreshToken: newRefreshToken, user } = res.data;
     const finalToken = accessToken || token;
     localStorage.setItem(TOKEN_STORAGE_KEY, finalToken);
