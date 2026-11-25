@@ -36,6 +36,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
     failedLogins: number;
     firstFailedAt: Date | null;
     lockedUntil: Date | null;
+    mustResetPw: boolean;
     role: { id: number; name: string };
   } = {
     id: BigInt(1),
@@ -48,6 +49,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
     failedLogins: 0,
     firstFailedAt: null,
     lockedUntil: null,
+    mustResetPw: false,
     role: { id: 1, name: 'Administrator' },
   };
 
@@ -241,6 +243,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
         username: 'sadia',
         email: 'sadia@smartmart.local',
         role: 'Administrator',
+        mustResetPassword: false,
       });
 
       expect(result.accessToken).toBeDefined();
@@ -285,15 +288,26 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
 
     it('rejects deactivated user accounts with generic 401 error', async () => {
       mockUser.isActive = false;
+      mockUser.failedLogins = 3;
+      const firstFailedAt = new Date(Date.now() - 60_000);
+      const lockedUntil = new Date(Date.now() + 60_000);
+      mockUser.firstFailedAt = firstFailedAt;
+      mockUser.lockedUntil = lockedUntil;
 
-      const dto = new LoginDto();
-      dto.usernameOrEmail = 'sadia';
-      dto.password = 'Smart@1234';
+      for (const password of ['Smart@1234', 'WrongPassword999']) {
+        const dto = new LoginDto();
+        dto.usernameOrEmail = 'sadia';
+        dto.password = password;
 
-      await expect(authService.validateAndLogin(dto)).rejects.toThrow(UnauthorizedException);
-      await expect(authService.validateAndLogin(dto)).rejects.toThrow(
-        'Invalid username or password',
-      );
+        await expect(authService.validateAndLogin(dto)).rejects.toThrow(
+          new UnauthorizedException('Invalid username or password'),
+        );
+      }
+
+      expect(mockUser.failedLogins).toBe(3);
+      expect(mockUser.firstFailedAt).toBe(firstFailedAt);
+      expect(mockUser.lockedUntil).toBe(lockedUntil);
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException if identifier is empty', async () => {
@@ -460,6 +474,7 @@ describe('AuthService (IMS-05.1, IMS-05.2, IMS-05.3, IMS-05.4 | FR-AUTH-01 to FR
       await expect(authService.refreshSession(refreshToken)).rejects.toThrow(
         'Invalid or expired refresh token',
       );
+      expect(storedTokens.get(authService.hashToken(refreshToken))?.revokedAt).not.toBeNull();
     });
   });
 

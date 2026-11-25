@@ -119,6 +119,10 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .set('Authorization', `Bearer ${roleTokens[role as UserRole]}`);
 
       expect(res.status).toBe(expectedStatus);
+      if (expectedStatus === 200 && endpoint === 'auth/me') {
+        expect(res.body.mustResetPassword).toEqual(expect.any(Boolean));
+        expect(res.body).not.toHaveProperty('passwordHash');
+      }
       if (expectedStatus === 403) {
         expect(res.body).toEqual({
           statusCode: 403,
@@ -429,6 +433,8 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .send({ usernameOrEmail: username, password: temporaryPassword });
       expect(loginRes.status).toBe(200);
       expect(loginRes.body.user.username).toBe(username);
+      expect(loginRes.body.user.mustResetPassword).toBe(true);
+      expect(loginRes.body.user).not.toHaveProperty('passwordHash');
     });
 
     it('sadia can edit and deactivate the created user', async () => {
@@ -448,6 +454,69 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .send({ isActive: false });
       expect(deactivateRes.status).toBe(200);
       expect(deactivateRes.body.isActive).toBe(false);
+    });
+
+    it('deactivated users cannot log in, refresh, or use access tokens, and can log in after reactivation', async () => {
+      const prisma = app.get(PrismaService);
+      const rafi = await prisma.user.findFirstOrThrow({ where: { username: 'rafi' } });
+
+      try {
+        const loginRes = await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+        expect(loginRes.status).toBe(200);
+
+        const deactivateRes = await request(app.getHttpServer())
+          .patch(`/api/users/${rafi.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: false });
+        expect(deactivateRes.status).toBe(200);
+
+        for (const password of ['Smart@1234', 'WrongPassword999']) {
+          const rejectedLogin = await request(app.getHttpServer())
+            .post('/api/auth/login')
+            .send({ usernameOrEmail: 'rafi', password });
+          expect(rejectedLogin.status).toBe(401);
+          expect(rejectedLogin.body.message).toBe('Invalid username or password');
+        }
+
+        const rejectedRefresh = await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .send({ refreshToken: loginRes.body.refreshToken });
+        expect(rejectedRefresh.status).toBe(401);
+        expect(rejectedRefresh.body.message).toBe('Invalid or expired refresh token');
+
+        const userTokens = await prisma.refreshToken.findMany({
+          where: { userId: rafi.id },
+        });
+        expect(userTokens.length).toBeGreaterThan(0);
+        expect(userTokens.every((token) => token.revokedAt !== null)).toBe(true);
+
+        for (const path of ['/api/auth/me', '/api/categories']) {
+          const rejectedRequest = await request(app.getHttpServer())
+            .get(path)
+            .set('Authorization', `Bearer ${loginRes.body.accessToken}`);
+          expect(rejectedRequest.status).toBe(401);
+        }
+
+        const reactivateRes = await request(app.getHttpServer())
+          .patch(`/api/users/${rafi.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: true });
+        expect(reactivateRes.status).toBe(200);
+
+        const reactivatedLogin = await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+        expect(reactivatedLogin.status).toBe(200);
+        expect(reactivatedLogin.body.user.username).toBe('rafi');
+        expect(reactivatedLogin.body.user.mustResetPassword).toEqual(expect.any(Boolean));
+      } finally {
+        await prisma.user.update({
+          where: { id: rafi.id },
+          data: { isActive: true },
+        });
+      }
     });
 
     it('duplicate username and email differing only by case return 409', async () => {
