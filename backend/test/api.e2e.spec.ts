@@ -34,19 +34,14 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       .post('/api/auth/login')
       .send({ usernameOrEmail: 'sadia', password: 'Smart@1234' });
     authToken = loginRes.body.accessToken || loginRes.body.token;
-    refreshToken = loginRes.body.refreshToken;
 
-    roleTokens = {} as Record<UserRole, string>;
-    for (const [role, username] of [
-      [UserRole.Administrator, 'sadia'],
-      [UserRole.SalesStaff, 'rafi'],
-      [UserRole.StoreStaff, 'mitu'],
-    ] as const) {
-      const roleLogin = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ usernameOrEmail: username, password: 'Smart@1234' });
-      roleTokens[role] = roleLogin.body.accessToken || roleLogin.body.token;
-    }
+    expect(loginRes.body).not.toHaveProperty('refreshToken');
+    const refreshCookie = loginRes.headers['set-cookie']?.find((cookie) =>
+      cookie.startsWith('refreshToken='),
+    );
+    expect(refreshCookie).toBeDefined();
+    refreshToken = refreshCookie?.split(';', 1)[0].slice('refreshToken='.length) ?? '';
+
   });
 
   afterAll(async () => {
