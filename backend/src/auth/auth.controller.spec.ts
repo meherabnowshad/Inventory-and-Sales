@@ -253,6 +253,7 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
         username: 'sadia',
         email: 'sadia@smartmart.local',
         role: 'Administrator',
+        mustResetPassword: false,
       };
 
       const result = await authController.getProfile({ user: mockUser });

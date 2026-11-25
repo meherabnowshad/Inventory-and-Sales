@@ -210,7 +210,7 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       const profile = await me(body.accessToken);
 
       for (const text of [JSON.stringify(body), JSON.stringify(profile.body)]) {
-        expect(text.toLowerCase()).not.toContain('password');
+        expect(text).not.toMatch(/"(?:password|passwordhash)":/i);
         expect(text.toLowerCase()).not.toContain('argon2');
       }
     });

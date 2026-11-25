@@ -1,5 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Boxes, ShoppingCart, Layers, LogOut, Shield, Tags } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Boxes,
+  ShoppingCart,
+  Layers,
+  LogOut,
+  Shield,
+  Tags,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole } from '../../types/auth';
 
@@ -29,6 +38,12 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     to: '/categories',
     icon: Tags,
     allowedRoles: ['Administrator', 'Sales Staff', 'Store Staff'],
+  },
+  {
+    label: 'Staff',
+    to: '/staff',
+    icon: Users,
+    allowedRoles: ['Administrator'],
   },
   {
     label: 'Sales & Orders',

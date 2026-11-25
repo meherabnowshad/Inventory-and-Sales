@@ -64,6 +64,7 @@ Seed rows: `Administrator`, `Sales Staff`, `Store Staff`.
 | `username`                 | `VARCHAR(40)`  | NN   | UQ on `lower(username)`                                                  |
 | `email`                    | `VARCHAR(254)` | NN   | UQ on `lower(email)`                                                     |
 | `password_hash`            | `TEXT`         | NN   | Argon2id hash, never the plain password (FR-AUTH-04)                     |
+| `must_reset_pw`            | `BOOLEAN`      | NN   | default `FALSE`; staff must change a temporary password on next login    |
 | `role_id`                  | `SMALLINT`     | NN   | FK → `roles.id` RESTRICT                                                 |
 | `is_active`                | `BOOLEAN`      | NN   | default `TRUE`                                                           |
 | `failed_logins`            | `INTEGER`      | NN   | default `0`; CK `>= 0`. Failed logins in the current window (FR-AUTH-05) |
