@@ -5,12 +5,14 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { UserRole } from '../src/auth/constants/roles';
 
 describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', () => {
   let app: INestApplication;
   let createdCategoryId: number;
   let authToken: string;
   let refreshToken: string;
+  let roleTokens: Record<UserRole, string>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -32,7 +34,25 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       .post('/api/auth/login')
       .send({ usernameOrEmail: 'sadia', password: 'Smart@1234' });
     authToken = loginRes.body.accessToken || loginRes.body.token;
-    refreshToken = loginRes.body.refreshToken;
+
+    expect(loginRes.body).not.toHaveProperty('refreshToken');
+    const refreshCookie = loginRes.headers['set-cookie']?.find((cookie) =>
+      cookie.startsWith('refreshToken='),
+    );
+    expect(refreshCookie).toBeDefined();
+    refreshToken = refreshCookie?.split(';', 1)[0].slice('refreshToken='.length) ?? '';
+
+    roleTokens = {} as Record<UserRole, string>;
+    for (const [role, username] of [
+      [UserRole.Administrator, 'sadia'],
+      [UserRole.SalesStaff, 'rafi'],
+      [UserRole.StoreStaff, 'mitu'],
+    ] as const) {
+      const roleLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: username, password: 'Smart@1234' });
+      roleTokens[role] = roleLogin.body.accessToken || roleLogin.body.token;
+    }
   });
 
   afterAll(async () => {
@@ -85,6 +105,87 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .set('Authorization', `Bearer ${refreshToken}`);
       expect(res.status).toBe(401);
       expect(res.body.message).toBe('Invalid or expired token');
+    });
+  });
+
+  describe('Role Permission Matrix (IMS-07)', () => {
+    const roles = [UserRole.Administrator, UserRole.SalesStaff, UserRole.StoreStaff];
+
+    it.each(
+      roles.flatMap((role) => [
+        [role, 'health', 200],
+        [role, 'auth/me', 200],
+        [role, 'categories', 200],
+        [role, 'inventory', 200],
+        [role, 'sales', role === UserRole.StoreStaff ? 403 : 200],
+      ]),
+    )('%s can access /api/%s with status %i', async (role, endpoint, expectedStatus) => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/${endpoint}`)
+        .set('Authorization', `Bearer ${roleTokens[role as UserRole]}`);
+
+      expect(res.status).toBe(expectedStatus);
+      if (expectedStatus === 200 && endpoint === 'auth/me') {
+        expect(res.body.mustResetPassword).toEqual(expect.any(Boolean));
+        expect(res.body).not.toHaveProperty('passwordHash');
+      }
+      if (expectedStatus === 403) {
+        expect(res.body).toEqual({
+          statusCode: 403,
+          code: 'FORBIDDEN_ROLE',
+          message: 'You do not have permission to perform this action',
+        });
+      }
+    });
+
+    it.each([
+      [UserRole.Administrator, 201],
+      [UserRole.SalesStaff, 403],
+      [UserRole.StoreStaff, 201],
+    ])('role %s category POST status %i', async (role, expectedStatus) => {
+      const res = await request(app.getHttpServer())
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${roleTokens[role as UserRole]}`)
+        .send({ name: `IMS07 Matrix ${role} ${Date.now()}` });
+
+      expect(res.status).toBe(expectedStatus);
+      if (expectedStatus === 403) {
+        expect(res.body.code).toBe('FORBIDDEN_ROLE');
+      } else if (res.body.id) {
+        const prisma = app.get(PrismaService);
+        await prisma.category.delete({ where: { id: res.body.id } });
+      }
+    });
+
+    it('forbidden Sales Staff POST, PATCH, and DELETE do not change categories', async () => {
+      const prisma = app.get(PrismaService);
+      const category = await prisma.category.findFirstOrThrow();
+      const before = await prisma.category.count();
+
+      const postRes = await request(app.getHttpServer())
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${roleTokens[UserRole.SalesStaff]}`)
+        .send({ name: `Forbidden IMS07 ${Date.now()}` });
+      expect(postRes.status).toBe(403);
+      expect(postRes.body.code).toBe('FORBIDDEN_ROLE');
+      expect(await prisma.category.count()).toBe(before);
+
+      const patchRes = await request(app.getHttpServer())
+        .patch(`/api/categories/${category.id}`)
+        .set('Authorization', `Bearer ${roleTokens[UserRole.SalesStaff]}`)
+        .send({ description: 'Forbidden role patch' });
+      expect(patchRes.status).toBe(403);
+      expect(patchRes.body.code).toBe('FORBIDDEN_ROLE');
+      expect(
+        (await prisma.category.findUniqueOrThrow({ where: { id: category.id } })).description,
+      ).toBe(category.description);
+
+      const deleteRes = await request(app.getHttpServer())
+        .delete(`/api/categories/${category.id}`)
+        .set('Authorization', `Bearer ${roleTokens[UserRole.SalesStaff]}`);
+      expect(deleteRes.status).toBe(403);
+      expect(deleteRes.body.code).toBe('FORBIDDEN_ROLE');
+      expect(await prisma.category.findUnique({ where: { id: category.id } })).not.toBeNull();
     });
   });
 
@@ -265,6 +366,206 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
       const row = res.body.find((c: { id: number }) => c.id === id);
       expect(row.productCount).toBe(2);
+    });
+  });
+
+  describe('Users API (/api/users)', () => {
+    const tag = `IMS07-${Date.now()}`;
+    const createdUsernames: string[] = [];
+    let createdUserId: number;
+
+    afterAll(async () => {
+      const prisma = app.get(PrismaService);
+      if (createdUsernames.length > 0) {
+        const users = await prisma.user.findMany({
+          where: { username: { in: createdUsernames } },
+          select: { id: true },
+        });
+        for (const user of users) {
+          await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+          await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+        }
+      }
+    });
+
+    it('rafi and mitu get 403 on every users route', async () => {
+      for (const role of [UserRole.SalesStaff, UserRole.StoreStaff]) {
+        const token = roleTokens[role];
+        const requests = [
+          request(app.getHttpServer()).get('/api/users').set('Authorization', `Bearer ${token}`),
+          request(app.getHttpServer()).get('/api/users/1').set('Authorization', `Bearer ${token}`),
+          request(app.getHttpServer())
+            .post('/api/users')
+            .set('Authorization', `Bearer ${token}`)
+            .send({}),
+          request(app.getHttpServer())
+            .patch('/api/users/1')
+            .set('Authorization', `Bearer ${token}`)
+            .send({}),
+        ];
+        for (const pending of requests) {
+          const res = await pending;
+          expect(res.status).toBe(403);
+          expect(res.body.code).toBe('FORBIDDEN_ROLE');
+        }
+      }
+    });
+
+    it('sadia can create a user and the created user can log in', async () => {
+      const username = `${tag}-create`.toLowerCase();
+      createdUsernames.push(username);
+      const temporaryPassword = 'Temporary!1';
+
+      const createRes = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'IMS07 Created User',
+          username,
+          email: `${tag}@example.local`.toLowerCase(),
+          role: UserRole.SalesStaff,
+          temporaryPassword,
+        });
+
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.username).toBe(username);
+      expect(createRes.body.mustResetPw).toBe(true);
+      expect(createRes.body).not.toHaveProperty('passwordHash');
+      expect(createRes.body).not.toHaveProperty('temporaryPassword');
+      createdUserId = createRes.body.id;
+
+      const loginRes = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: username, password: temporaryPassword });
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.user.username).toBe(username);
+      expect(loginRes.body.user.mustResetPassword).toBe(true);
+      expect(loginRes.body.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('sadia can edit and deactivate the created user', async () => {
+      expect(createdUserId).toBeDefined();
+
+      const editRes = await request(app.getHttpServer())
+        .patch(`/api/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: 'IMS07 Updated User', role: UserRole.StoreStaff });
+      expect(editRes.status).toBe(200);
+      expect(editRes.body.name).toBe('IMS07 Updated User');
+      expect(editRes.body.role).toBe(UserRole.StoreStaff);
+
+      const deactivateRes = await request(app.getHttpServer())
+        .patch(`/api/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ isActive: false });
+      expect(deactivateRes.status).toBe(200);
+      expect(deactivateRes.body.isActive).toBe(false);
+    });
+
+    it('deactivated users cannot log in, refresh, or use access tokens, and can log in after reactivation', async () => {
+      const prisma = app.get(PrismaService);
+      const rafi = await prisma.user.findFirstOrThrow({ where: { username: 'rafi' } });
+
+      try {
+        const loginRes = await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+        expect(loginRes.status).toBe(200);
+
+        const rafiRefreshCookie = loginRes.headers['set-cookie']?.find((cookie) =>
+          cookie.startsWith('refreshToken='),
+        );
+        expect(rafiRefreshCookie).toBeDefined();
+        const rafiRefreshToken =
+          rafiRefreshCookie?.split(';', 1)[0].slice('refreshToken='.length) ?? '';
+
+        const deactivateRes = await request(app.getHttpServer())
+          .patch(`/api/users/${rafi.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: false });
+        expect(deactivateRes.status).toBe(200);
+
+        for (const password of ['Smart@1234', 'WrongPassword999']) {
+          const rejectedLogin = await request(app.getHttpServer())
+            .post('/api/auth/login')
+            .send({ usernameOrEmail: 'rafi', password });
+          expect(rejectedLogin.status).toBe(401);
+          expect(rejectedLogin.body.message).toBe('Invalid username or password');
+        }
+
+        const rejectedRefresh = await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .send({ refreshToken: rafiRefreshToken });
+        expect(rejectedRefresh.status).toBe(401);
+        expect(rejectedRefresh.body.message).toBe('Invalid or expired refresh token');
+
+        const userTokens = await prisma.refreshToken.findMany({
+          where: { userId: rafi.id },
+        });
+        expect(userTokens.length).toBeGreaterThan(0);
+        expect(userTokens.every((token) => token.revokedAt !== null)).toBe(true);
+
+        for (const path of ['/api/auth/me', '/api/categories']) {
+          const rejectedRequest = await request(app.getHttpServer())
+            .get(path)
+            .set('Authorization', `Bearer ${loginRes.body.accessToken}`);
+          expect(rejectedRequest.status).toBe(401);
+        }
+
+        const reactivateRes = await request(app.getHttpServer())
+          .patch(`/api/users/${rafi.id}`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ isActive: true });
+        expect(reactivateRes.status).toBe(200);
+
+        const reactivatedLogin = await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+        expect(reactivatedLogin.status).toBe(200);
+        expect(reactivatedLogin.body.user.username).toBe('rafi');
+        expect(reactivatedLogin.body.user.mustResetPassword).toEqual(expect.any(Boolean));
+      } finally {
+        await prisma.user.update({
+          where: { id: rafi.id },
+          data: { isActive: true },
+        });
+      }
+    });
+
+    it('duplicate username and email differing only by case return 409', async () => {
+      const username = `${tag}-duplicate`.toLowerCase();
+      const email = `${tag}-duplicate@example.local`.toLowerCase();
+      createdUsernames.push(username);
+      const body = {
+        name: 'Duplicate Test',
+        username,
+        email,
+        role: UserRole.StoreStaff,
+        temporaryPassword: 'Temporary!1',
+      };
+      const first = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(body);
+      expect(first.status).toBe(201);
+
+      const secondUsername = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ ...body, email: `${tag}-other@example.local`, username: username.toUpperCase() });
+      expect(secondUsername.status).toBe(409);
+      expect(secondUsername.body.code).toBe('USERNAME_TAKEN');
+
+      const secondEmail = await request(app.getHttpServer())
+        .post('/api/users')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          ...body,
+          username: `${tag}-other`,
+          email: email.toUpperCase(),
+        });
+      expect(secondEmail.status).toBe(409);
+      expect(secondEmail.body.code).toBe('EMAIL_TAKEN');
     });
   });
 

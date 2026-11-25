@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { Algorithm, hash } from '@node-rs/argon2';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -25,8 +26,12 @@ const PROTECTED_ROUTES = ['/api/auth/me', '/api/categories', '/api/inventory', '
 interface AuthBody {
   user: { id: number; name: string; username: string; email: string; role: string };
   accessToken: string;
-  refreshToken: string;
   token: string;
+}
+
+interface AuthSession extends AuthBody {
+  refreshCookie: string;
+  refreshToken: string;
 }
 
 describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
@@ -48,15 +53,44 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
   const login = (identifier: string, password: string = PASSWORD) =>
     http().post('/api/auth/login').send({ usernameOrEmail: identifier, password });
 
-  const loginAs = async (label: string): Promise<AuthBody> => {
+  const getRefreshCookie = (res: { headers: Record<string, string | string[] | undefined> }) => {
+    const cookies = res.headers['set-cookie'];
+    const refreshCookie = (Array.isArray(cookies) ? cookies : [cookies]).find((cookie) =>
+      cookie?.startsWith('refreshToken='),
+    );
+    if (!refreshCookie) throw new Error('Login or refresh response did not set a refresh cookie');
+    return refreshCookie;
+  };
+
+  const getRefreshToken = (cookie: string) => {
+    const pair = cookie.split(';', 1)[0];
+    if (!pair.startsWith('refreshToken=')) throw new Error('Invalid refresh cookie');
+    return decodeURIComponent(pair.slice('refreshToken='.length));
+  };
+
+  const cookiePair = (cookie: string) => cookie.split(';', 1)[0];
+
+  const loginAs = async (label: string): Promise<AuthSession> => {
     const res = await login(users[label].username);
     expect(res.status).toBe(200);
-    return res.body as AuthBody;
+    expect(res.body).not.toHaveProperty('refreshToken');
+    const refreshCookie = getRefreshCookie(res);
+    return {
+      ...(res.body as AuthBody),
+      refreshCookie: cookiePair(refreshCookie),
+      refreshToken: getRefreshToken(refreshCookie),
+    };
   };
 
   const me = (token: string) => http().get('/api/auth/me').set('Authorization', `Bearer ${token}`);
 
-  const refresh = (refreshToken: string) => http().post('/api/auth/refresh').send({ refreshToken });
+  const refresh = (refreshToken: string) =>
+    http()
+      .post('/api/auth/refresh')
+      .set('Cookie', `refreshToken=${encodeURIComponent(refreshToken)}`);
+
+  const logoutWithCookie = (cookie: string) =>
+    http().post('/api/auth/logout').set('Cookie', cookiePair(cookie));
 
   const createUser = async (label: string, isActive = true) => {
     const username = `${PREFIX}${RUN}_${label}`;
@@ -90,6 +124,7 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
@@ -103,7 +138,16 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
     roleId = role.id;
 
     await removeTestUsers(); // leftovers of an earlier run that stopped half way
-    for (const label of ['main', 'other', 'generic', 'deact', 'lock1', 'lock2', 'lock3']) {
+    for (const label of [
+      'main',
+      'other',
+      'generic',
+      'deact',
+      'deact2',
+      'lock1',
+      'lock2',
+      'lock3',
+    ]) {
       await createUser(label);
     }
     await createUser('inactive', false);
@@ -111,7 +155,7 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
 
   afterAll(async () => {
     if (app) {
-      await removeTestUsers();
+      if (prisma) await removeTestUsers();
       await app.close();
     }
   });
@@ -130,8 +174,9 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       }
     });
 
-    it('TC-API-008: returns 200 JSON with the user, a JWT access token and a refresh token', async () => {
+    it('TC-API-008: returns the access token in JSON and the refresh token only in an HttpOnly cookie', async () => {
       const res = await login(users.main.username);
+      const refreshCookie = getRefreshCookie(res);
 
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/application\/json/);
@@ -141,7 +186,10 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
         role: 'Sales Staff',
       });
       expect(res.body.accessToken.split('.')).toHaveLength(3);
-      expect(res.body.refreshToken).toMatch(/^smartmart_refresh_/);
+      expect(res.body).not.toHaveProperty('refreshToken');
+      expect(refreshCookie).toMatch(/^refreshToken=smartmart_refresh_/);
+      expect(refreshCookie).toMatch(/;\s*Path=\/api\/auth/i);
+      expect(refreshCookie).toMatch(/;\s*HttpOnly/i);
       expect(res.body.token).toBe(res.body.accessToken);
     });
 
@@ -171,7 +219,7 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       const profile = await me(body.accessToken);
 
       for (const text of [JSON.stringify(body), JSON.stringify(profile.body)]) {
-        expect(text.toLowerCase()).not.toContain('password');
+        expect(text).not.toMatch(/"(?:password|passwordhash)":/i);
         expect(text.toLowerCase()).not.toContain('argon2');
       }
     });
@@ -252,11 +300,10 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       const session = await loginAs('main');
       expect((await me(session.accessToken)).status).toBe(200);
 
-      const out = await http()
-        .post('/api/auth/logout')
-        .set('Authorization', `Bearer ${session.accessToken}`);
+      const out = await logoutWithCookie(session.refreshCookie);
       expect(out.status).toBe(200);
       expect(out.body).toEqual({ message: 'Logged out successfully' });
+      expect(getRefreshCookie(out)).toMatch(/^refreshToken=;/);
 
       const reused = await me(session.accessToken);
       expect(reused.status).toBe(401);
@@ -284,7 +331,9 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
     it('TC-API-042 and 043: logout with no token or a fake token returns 401', async () => {
       const none = await http().post('/api/auth/logout');
       expect(none.status).toBe(401);
-      expect(none.body.message).toBe('Authorization header or refreshToken is required for logout');
+      expect(none.body.message).toBe(
+        'Authorization header, cookie, or refreshToken is required for logout',
+      );
 
       const fake = await http().post('/api/auth/logout').set('Authorization', 'Bearer abc123');
       expect(fake.status).toBe(401);
@@ -294,14 +343,14 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       const first = await loginAs('main');
       const second = await loginAs('other');
 
-      await http().post('/api/auth/logout').set('Authorization', `Bearer ${first.accessToken}`);
+      await logoutWithCookie(first.refreshCookie);
 
       expect((await me(second.accessToken)).status).toBe(200);
     });
 
     it('TC-API-045: logging in again after logout works', async () => {
       const first = await loginAs('main');
-      await http().post('/api/auth/logout').set('Authorization', `Bearer ${first.accessToken}`);
+      await logoutWithCookie(first.refreshCookie);
 
       const second = await loginAs('main');
       expect((await me(second.accessToken)).status).toBe(200);
@@ -311,7 +360,7 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       const sessionA = await loginAs('main');
       const sessionB = await loginAs('main');
 
-      await http().post('/api/auth/logout').set('Authorization', `Bearer ${sessionA.accessToken}`);
+      await logoutWithCookie(sessionA.refreshCookie);
 
       expect((await me(sessionA.accessToken)).status).toBe(401);
       expect((await refresh(sessionA.refreshToken)).status).toBe(401);
@@ -319,14 +368,59 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       expect((await refresh(sessionB.refreshToken)).status).toBe(200);
     });
 
-    it('TC-API-095: logout works with only the refresh token in the body', async () => {
+    it('TC-API-095: logout works with only the HttpOnly refresh cookie', async () => {
       const session = await loginAs('main');
+
+      const out = await logoutWithCookie(session.refreshCookie);
+      expect(out.status).toBe(200);
+      expect((await refresh(session.refreshToken)).status).toBe(401);
+    });
+
+    // IMS-05.7: multi-session logout. Cases 1 and 2 of the ticket (A's and B's refresh token) are
+    // already asserted in TC-API-040 above; these tests add the access-token side.
+    it('TC-API-097: after logout with the access token, that session is rejected at once on every protected route (IMS-05.7)', async () => {
+      const sessionA = await loginAs('main');
+      await loginAs('main'); // session B stays logged in
+
+      // supertest keeps no cookie jar, so only the Bearer token reaches the logout route
+      const out = await http()
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${sessionA.accessToken}`);
+      expect(out.status).toBe(200);
+
+      for (const route of PROTECTED_ROUTES) {
+        const res = await http().get(route).set('Authorization', `Bearer ${sessionA.accessToken}`);
+        expect(res.status).toBe(401);
+        expect(res.body.message).toBe('Token has been revoked');
+      }
+    });
+
+    it('TC-API-097: after logout with the refresh cookie, the paired access token is rejected at once on every protected route (IMS-05.7)', async () => {
+      const session = await loginAs('main');
+      expect((await me(session.accessToken)).status).toBe(200);
+
+      expect((await logoutWithCookie(session.refreshCookie)).status).toBe(200);
+
+      for (const route of PROTECTED_ROUTES) {
+        const res = await http().get(route).set('Authorization', `Bearer ${session.accessToken}`);
+        expect(res.status).toBe(401);
+        expect(res.body.message).toBe('Token has been revoked');
+      }
+    });
+
+    it('TC-API-098: the other session keeps working on every protected route after one session logs out (IMS-05.7)', async () => {
+      const sessionA = await loginAs('main');
+      const sessionB = await loginAs('main');
 
       const out = await http()
         .post('/api/auth/logout')
-        .send({ refreshToken: session.refreshToken });
+        .set('Authorization', `Bearer ${sessionA.accessToken}`);
       expect(out.status).toBe(200);
-      expect((await refresh(session.refreshToken)).status).toBe(401);
+
+      for (const route of PROTECTED_ROUTES) {
+        const res = await http().get(route).set('Authorization', `Bearer ${sessionB.accessToken}`);
+        expect(res.status).toBe(200);
+      }
     });
   });
 
@@ -372,7 +466,9 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       const renewed = await refresh(session.refreshToken);
       expect(renewed.status).toBe(200);
       expect(renewed.body.accessToken).not.toBe(session.accessToken);
-      expect(renewed.body.refreshToken).not.toBe(session.refreshToken);
+      expect(renewed.body).not.toHaveProperty('refreshToken');
+      const rotatedRefreshCookie = getRefreshCookie(renewed);
+      expect(getRefreshToken(rotatedRefreshCookie)).not.toBe(session.refreshToken);
       expect((await me(renewed.body.accessToken)).status).toBe(200);
 
       const replay = await refresh(session.refreshToken);
@@ -401,9 +497,8 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       expect((await me(session.accessToken)).status).toBe(200);
       const renewed = await refresh(session.refreshToken);
       expect(renewed.status).toBe(200);
-      const out = await http()
-        .post('/api/auth/logout')
-        .set('Authorization', `Bearer ${renewed.body.refreshToken}`);
+      expect(renewed.body).not.toHaveProperty('refreshToken');
+      const out = await logoutWithCookie(getRefreshCookie(renewed));
       expect(out.status).toBe(200);
     });
 
@@ -440,6 +535,24 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       expect(renewed.body.message).toBe('Invalid or expired refresh token');
 
       expect((await me(session.accessToken)).status).toBe(401);
+    });
+
+    // IMS-05.7: TC-API-059 above uses one session; this one deactivates a user with two sessions.
+    // There is no deactivate endpoint on master yet, so the test sets isActive through Prisma.
+    it('TC-API-099: deactivating a user ends all of their sessions at once (IMS-05.7 | NFR-SEC-05)', async () => {
+      const sessionA = await loginAs('deact2');
+      const sessionB = await loginAs('deact2');
+      expect((await me(sessionA.accessToken)).status).toBe(200);
+      expect((await me(sessionB.accessToken)).status).toBe(200);
+
+      await prisma.user.update({ where: { id: users.deact2.id }, data: { isActive: false } });
+
+      for (const session of [sessionA, sessionB]) {
+        const renewed = await refresh(session.refreshToken);
+        expect(renewed.status).toBe(401);
+        expect(renewed.body.message).toBe('Invalid or expired refresh token');
+        expect((await me(session.accessToken)).status).toBe(401);
+      }
     });
   });
 
