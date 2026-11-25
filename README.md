@@ -373,19 +373,20 @@ Commands can be run from repository root using `--workspace=frontend`, or direct
 
 ## 🛠 Available Monorepo Commands
 
-| Command                  | Purpose                                                      |
-| :----------------------- | :----------------------------------------------------------- |
-| `npm run dev`            | Starts Backend (`:5001`) and Frontend (`:5173`) concurrently |
-| `npm run dev:backend`    | Starts Backend with hot-reloading (`tsx`)                    |
-| `npm run dev:frontend`   | Starts Frontend with Vite HMR                                |
-| `npm run build`          | Compiles both backend and frontend for production            |
-| `npm run build:backend`  | Compiles backend TypeScript to `backend/dist`                |
-| `npm run build:frontend` | Bundles frontend static assets to `frontend/dist`            |
-| `npm run lint`           | Runs ESLint on both backend and frontend                     |
-| `npm run lint:fix`       | Fixes auto-fixable linting issues in both packages           |
-| `npm run format`         | Runs Prettier across all source code                         |
-| `npm run format:check`   | Verifies code formatting across the repository               |
-| `npm run setup:env`      | Copies `.env.example` to `.env` in both packages             |
+| Command                         | Purpose                                                      |
+| :------------------------------ | :----------------------------------------------------------- |
+| `npm run dev`                   | Starts Backend (`:5001`) and Frontend (`:5173`) concurrently |
+| `npm run dev:backend`           | Starts Backend with hot-reloading (`tsx`)                    |
+| `npm run dev:frontend`          | Starts Frontend with Vite HMR                                |
+| `npm run build`                 | Compiles both backend and frontend for production            |
+| `npm run build:backend`         | Compiles backend TypeScript to `backend/dist`                |
+| `npm run build:frontend`        | Bundles frontend static assets to `frontend/dist`            |
+| `npm run lint`                  | Runs ESLint on both backend and frontend                     |
+| `npm run lint:fix`              | Fixes auto-fixable linting issues in both packages           |
+| `npm run format`                | Runs Prettier across all source code                         |
+| `npm run format:check`          | Verifies code formatting across the repository               |
+| `npm run setup:env`             | Copies `.env.example` to `.env` in both packages             |
+| `npm run test:smoke` (in `e2e`) | Runs Playwright login smoke tests against the running app    |
 
 ---
 
