@@ -523,6 +523,9 @@ HAVING p.stock_qty <> COALESCE(SUM(m.quantity), 0);
 
 Password hashes and tokens are never written to the audit log (FR-AUTH-04).
 
+The `/api/users` API writes `USER_CREATED`, `USER_UPDATED`, `ROLE_CHANGED`,
+`USER_DEACTIVATED`, and `USER_REACTIVATED` actions for entity `USER`.
+
 ### 4.2 Rules
 
 - The audit row is written **in the same transaction** as the change it describes.

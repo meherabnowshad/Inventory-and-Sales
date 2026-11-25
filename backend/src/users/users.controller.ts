@@ -33,6 +33,12 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+  @Get(':id/audit')
+  @Roles(UserRole.Administrator)
+  findAudit(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.findAudit(id);
+  }
+
   @Post()
   @Roles(UserRole.Administrator)
   create(@Body() dto: CreateUserDto, @Req() req: { user: AuthUserResponse }) {

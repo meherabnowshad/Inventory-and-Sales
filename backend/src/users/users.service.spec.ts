@@ -29,6 +29,7 @@ describe('UsersService', () => {
       create: vi.fn(),
       update: vi.fn(),
     },
+    auditLog: { create: vi.fn(), findMany: vi.fn() },
     refreshToken: { updateMany: vi.fn() },
   };
 
@@ -39,6 +40,7 @@ describe('UsersService', () => {
       findMany: vi.fn(),
       count: vi.fn(),
     },
+    auditLog: { findMany: vi.fn() },
   };
 
   beforeEach(() => {
@@ -51,6 +53,7 @@ describe('UsersService', () => {
     tx.role.findUnique.mockResolvedValue({ id: 2, name: 'Sales Staff' });
     tx.user.create.mockResolvedValue(baseUser);
     tx.user.update.mockResolvedValue(baseUser);
+    tx.auditLog.create.mockResolvedValue({});
     tx.refreshToken.updateMany.mockResolvedValue({ count: 1 });
     service = new UsersService(prisma as never);
   });
@@ -73,6 +76,30 @@ describe('UsersService', () => {
     expect(createArgs.data.mustResetPw).toBe(true);
     expect(createArgs.data.createdBy).toBe(adminId);
     expect(result).not.toHaveProperty('passwordHash');
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        entity: 'USER',
+        entityId: userId,
+        action: 'USER_CREATED',
+        beforeJson: Prisma.DbNull,
+        afterJson: {
+          id: Number(userId),
+          name: baseUser.name,
+          username: baseUser.username,
+          email: baseUser.email,
+          role: baseUser.role.name,
+          isActive: baseUser.isActive,
+        },
+        userId: adminId,
+      },
+    });
+    const savedJson = JSON.stringify(
+      tx.auditLog.create.mock.calls[0][0].data,
+      (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
+    );
+    expect(savedJson).not.toContain('Temporary1!');
+    expect(savedJson).not.toContain('passwordHash');
+    expect(savedJson).not.toContain('tokenHash');
   });
 
   it.each([
@@ -104,6 +131,8 @@ describe('UsersService', () => {
   it('changes role and protects own account', async () => {
     tx.user.findUnique.mockResolvedValue({
       id: userId,
+      name: baseUser.name,
+      email: baseUser.email,
       isActive: true,
       role: { name: 'Sales Staff' },
     });
@@ -116,6 +145,8 @@ describe('UsersService', () => {
 
     tx.user.findUnique.mockResolvedValue({
       id: adminId,
+      name: 'Admin',
+      email: 'admin@smartmart.local',
       isActive: true,
       role: { name: 'Administrator' },
     });
@@ -130,6 +161,8 @@ describe('UsersService', () => {
   it('revokes refresh tokens when deactivated', async () => {
     tx.user.findUnique.mockResolvedValue({
       id: userId,
+      name: baseUser.name,
+      email: baseUser.email,
       isActive: true,
       role: { name: 'Sales Staff' },
     });
@@ -143,9 +176,138 @@ describe('UsersService', () => {
     );
   });
 
+  it('writes one audit row per changed role, status, and detail action', async () => {
+    tx.user.findUnique.mockResolvedValue({
+      id: userId,
+      name: 'Before',
+      email: 'before@smartmart.local',
+      isActive: true,
+      role: { name: 'Sales Staff' },
+    });
+    tx.role.findUnique.mockResolvedValue({ id: 3, name: 'Store Staff' });
+    tx.user.update.mockResolvedValue({
+      ...baseUser,
+      name: 'After',
+      email: 'after@smartmart.local',
+      isActive: false,
+      role: { name: 'Store Staff' },
+    });
+
+    await service.update(
+      Number(userId),
+      {
+        role: 'Store Staff',
+        isActive: false,
+        name: 'After',
+        email: 'after@smartmart.local',
+      } as never,
+      adminId,
+    );
+
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(3);
+    expect(tx.auditLog.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          entity: 'USER',
+          entityId: userId,
+          action: 'ROLE_CHANGED',
+          beforeJson: { role: 'Sales Staff' },
+          afterJson: { role: 'Store Staff' },
+          userId: adminId,
+        }),
+      }),
+    );
+    expect(tx.auditLog.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'USER_DEACTIVATED',
+          beforeJson: { isActive: true },
+          afterJson: { isActive: false },
+        }),
+      }),
+    );
+    expect(tx.auditLog.create).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'USER_UPDATED',
+          beforeJson: { name: 'Before', email: 'before@smartmart.local' },
+          afterJson: { name: 'After', email: 'after@smartmart.local' },
+        }),
+      }),
+    );
+  });
+
+  it('audits reactivation and writes no row when nothing changes', async () => {
+    tx.user.findUnique.mockResolvedValue({
+      id: userId,
+      name: baseUser.name,
+      email: baseUser.email,
+      isActive: false,
+      role: { name: 'Sales Staff' },
+    });
+    tx.user.update.mockResolvedValue({ ...baseUser, isActive: true });
+
+    await service.update(Number(userId), { isActive: true } as never, adminId);
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'USER_REACTIVATED',
+          beforeJson: { isActive: false },
+          afterJson: { isActive: true },
+        }),
+      }),
+    );
+
+    vi.clearAllMocks();
+    prisma.$transaction.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (client: typeof tx) => unknown)(tx)
+        : Promise.all(arg as unknown[]),
+    );
+    tx.user.findUnique.mockResolvedValue({
+      id: userId,
+      name: baseUser.name,
+      email: baseUser.email,
+      isActive: true,
+      role: { name: 'Sales Staff' },
+    });
+    tx.user.update.mockResolvedValue(baseUser);
+
+    await service.update(Number(userId), { name: baseUser.name } as never, adminId);
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects the transaction when an audit insert fails', async () => {
+    let committed = false;
+    prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      const result = await (arg as (client: typeof tx) => unknown)(tx);
+      committed = true;
+      return result;
+    });
+    tx.user.findUnique.mockResolvedValue({
+      id: userId,
+      name: baseUser.name,
+      email: baseUser.email,
+      isActive: true,
+      role: { name: 'Sales Staff' },
+    });
+    tx.auditLog.create.mockRejectedValue(new Error('audit insert failed'));
+
+    await expect(
+      service.update(Number(userId), { isActive: false } as never, adminId),
+    ).rejects.toThrow('audit insert failed');
+    expect(tx.user.update).toHaveBeenCalled();
+    expect(committed).toBe(false);
+  });
+
   it('blocks the last active administrator', async () => {
     tx.user.findUnique.mockResolvedValue({
       id: userId,
+      name: baseUser.name,
+      email: baseUser.email,
       isActive: true,
       role: { name: 'Administrator' },
     });

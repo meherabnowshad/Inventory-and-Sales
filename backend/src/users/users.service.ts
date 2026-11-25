@@ -28,6 +28,26 @@ const USER_SELECT = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private writeAudit(
+    tx: Prisma.TransactionClient,
+    entityId: bigint,
+    userId: bigint,
+    action: string,
+    beforeJson: Prisma.InputJsonValue | null,
+    afterJson: Prisma.InputJsonValue | null,
+  ) {
+    return tx.auditLog.create({
+      data: {
+        entity: 'USER',
+        entityId,
+        action,
+        beforeJson: beforeJson ?? Prisma.DbNull,
+        afterJson: afterJson ?? Prisma.DbNull,
+        userId,
+      },
+    });
+  }
+
   private rethrowUnique(e: unknown): never {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
       const targets = e.meta?.target as string[] | string | undefined;
@@ -110,6 +130,36 @@ export class UsersService {
     return mapUserToResponse(user);
   }
 
+  async findAudit(id: number) {
+    const userId = BigInt(id);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    const entries = await this.prisma.auditLog.findMany({
+      where: { entity: 'USER', entityId: userId },
+      include: { user: { select: { username: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+    });
+
+    return {
+      items: entries.map((entry) => ({
+        id: Number(entry.id),
+        action: entry.action,
+        actorUserId: Number(entry.userId),
+        actorName: entry.user.username,
+        before: entry.beforeJson,
+        after: entry.afterJson,
+        createdAt: entry.createdAt,
+      })),
+    };
+  }
+
   async create(dto: CreateUserDto, createdBy: bigint) {
     const passwordHash = await hash(dto.temporaryPassword, {
       algorithm: Algorithm.Argon2id,
@@ -131,6 +181,14 @@ export class UsersService {
           },
           select: USER_SELECT,
         });
+        await this.writeAudit(tx, user.id, createdBy, 'USER_CREATED', null, {
+          id: Number(user.id),
+          name: user.name,
+          username: user.username,
+          email: user.email,
+          role: user.role.name,
+          isActive: user.isActive,
+        });
         return mapUserToResponse(user);
       });
     } catch (e) {
@@ -144,6 +202,8 @@ export class UsersService {
         where: { id: BigInt(id) },
         select: {
           id: true,
+          name: true,
+          email: true,
           isActive: true,
           role: { select: { name: true } },
         },
@@ -162,6 +222,18 @@ export class UsersService {
       }
 
       const roleName = dto.role ?? existing.role.name;
+      const roleChanged = dto.role !== undefined && dto.role !== existing.role.name;
+      const activeChanged = dto.isActive !== undefined && dto.isActive !== existing.isActive;
+      const beforeDetails: { name?: string; email?: string } = {};
+      const afterDetails: { name?: string; email?: string } = {};
+      if (dto.name !== undefined && dto.name !== existing.name) {
+        beforeDetails.name = existing.name;
+        afterDetails.name = dto.name;
+      }
+      if (dto.email !== undefined && dto.email !== existing.email) {
+        beforeDetails.email = existing.email;
+        afterDetails.email = dto.email;
+      }
       let roleId: number | undefined;
       if (dto.role !== undefined) {
         roleId = (await this.getRole(tx, dto.role)).id;
@@ -219,6 +291,37 @@ export class UsersService {
             where: { userId: BigInt(id), revokedAt: null },
             data: { revokedAt: new Date() },
           });
+        }
+
+        if (roleChanged) {
+          await this.writeAudit(
+            tx,
+            existing.id,
+            currentAdminId,
+            'ROLE_CHANGED',
+            { role: existing.role.name },
+            { role: updated.role.name },
+          );
+        }
+        if (activeChanged) {
+          await this.writeAudit(
+            tx,
+            existing.id,
+            currentAdminId,
+            dto.isActive ? 'USER_REACTIVATED' : 'USER_DEACTIVATED',
+            { isActive: existing.isActive },
+            { isActive: updated.isActive },
+          );
+        }
+        if (Object.keys(afterDetails).length > 0) {
+          await this.writeAudit(
+            tx,
+            existing.id,
+            currentAdminId,
+            'USER_UPDATED',
+            beforeDetails,
+            afterDetails,
+          );
         }
 
         return mapUserToResponse(updated);
