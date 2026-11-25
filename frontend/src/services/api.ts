@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AuthResponse, LoginCredentials, AuthUser } from '../types/auth';
+import { AuthResponse, LoginCredentials, AuthUser, UserRole } from '../types/auth';
 
 // Defaults to '/api' so Vite proxy in vite.config.ts forwards to http://localhost:5001/api without CORS
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -330,6 +330,63 @@ export interface CategoryItem {
   productCount: number; // all products in the category, active and inactive (IMS-08.4)
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StaffUser {
+  id: number;
+  name: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  mustResetPw: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffListResponse {
+  items: StaffUser[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export type StaffStatusFilter = 'all' | 'active' | 'inactive';
+
+export interface StaffListParams {
+  q?: string;
+  role?: UserRole;
+  status: StaffStatusFilter;
+  page: number;
+  size: number;
+}
+
+export interface CreateStaffInput {
+  name: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  temporaryPassword: string;
+}
+
+export interface UpdateStaffInput {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+export async function fetchStaff(params: StaffListParams): Promise<StaffListResponse> {
+  const response = await apiClient.get<StaffListResponse>('/users', { params });
+  return response.data;
+}
+
+export async function createStaff(input: CreateStaffInput): Promise<void> {
+  await apiClient.post('/users', input);
+}
+
+export async function updateStaff(id: number, input: UpdateStaffInput): Promise<void> {
+  await apiClient.patch(`/users/${id}`, input);
 }
 
 // Values of the ?status= query parameter accepted by the backend (default is 'all')

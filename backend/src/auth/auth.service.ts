@@ -16,6 +16,7 @@ export interface AuthUserResponse {
   username: string;
   email: string;
   role: string;
+  mustResetPassword: boolean;
 }
 
 export interface LoginResponse {
@@ -26,7 +27,7 @@ export interface LoginResponse {
 }
 
 export interface RefreshResponse {
-  user: AuthUserResponse;
+  user: Omit<AuthUserResponse, 'mustResetPassword'>;
   accessToken: string;
   refreshToken: string;
   token: string;
@@ -110,13 +111,13 @@ export class AuthService {
     const now = new Date();
 
     // FR-AUTH-05: Block login (even with right password) while account is temporarily locked
-    if (user && user.lockedUntil && user.lockedUntil > now) {
+    if (user?.isActive && user.lockedUntil && user.lockedUntil > now) {
       const retryAfterSeconds = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 1000);
       throw new TemporarilyLockedException(retryAfterSeconds);
     }
 
     // Timing attack mitigation: always execute Argon2id verification even if user is missing/inactive
-    const hashToVerify = user?.passwordHash || DUMMY_ARGON2_HASH;
+    const hashToVerify = user?.isActive ? user.passwordHash : DUMMY_ARGON2_HASH;
     let isPasswordValid = false;
     try {
       isPasswordValid = await verify(hashToVerify, dto.password);
@@ -152,6 +153,7 @@ export class AuthService {
       username: user.username,
       email: user.email,
       role: user.role.name,
+      mustResetPassword: user.mustResetPw,
     };
 
     // Issue tokens (IMS-05.3, FR-AUTH-03, NFR-SEC-05)
@@ -209,6 +211,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
+    // Deactivated accounts cannot renew sessions, even when deactivation already revoked the token.
+    if (!record.user || !record.user.isActive) {
+      if (record.revokedAt === null) {
+        await this.prisma.refreshToken.updateMany({
+          where: {
+            id: record.id,
+            revokedAt: null,
+          },
+          data: { revokedAt: now },
+        });
+      }
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
     // FR-AUTH-02: Revoked tokens cannot be reused
     if (record.revokedAt !== null) {
       throw new UnauthorizedException('Refresh token has already been revoked');
@@ -217,11 +233,6 @@ export class AuthService {
     // FR-AUTH-03: Expiry check (8 hours)
     if (record.expiresAt <= now) {
       throw new UnauthorizedException('Refresh token has expired');
-    }
-
-    // Generic error for deactivated user account per review point 7
-    if (!record.user || !record.user.isActive) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
     // ROTATION (NFR-SEC-05): Revoke old refresh token row atomically using updateMany to prevent race conditions
@@ -237,7 +248,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token has already been revoked');
     }
 
-    const authUser: AuthUserResponse = {
+    const authUser: Omit<AuthUserResponse, 'mustResetPassword'> = {
       id: Number(record.user.id),
       name: record.user.name,
       username: record.user.username,
@@ -381,7 +392,7 @@ export class AuthService {
       });
 
       if (!user || !user.isActive) {
-        throw new UnauthorizedException('Invalid or expired token');
+        throw new UnauthorizedException('Account is deactivated');
       }
 
       // FR-AUTH-02: Verify session has not been revoked (e.g. after logout)
@@ -400,6 +411,7 @@ export class AuthService {
         username: user.username,
         email: user.email,
         role: user.role.name,
+        mustResetPassword: user.mustResetPw,
       };
     }
 
@@ -452,7 +464,7 @@ export class AuthService {
    * Issues an RFC 7519 HS256 JWT access token (15-min TTL)
    */
   signAccessToken(
-    user: AuthUserResponse,
+    user: Omit<AuthUserResponse, 'mustResetPassword'>,
     expiresInSec: number = ACCESS_TOKEN_TTL_SEC,
     sid?: number,
   ): string {
