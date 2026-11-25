@@ -395,6 +395,9 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
           request(app.getHttpServer()).get('/api/users').set('Authorization', `Bearer ${token}`),
           request(app.getHttpServer()).get('/api/users/1').set('Authorization', `Bearer ${token}`),
           request(app.getHttpServer())
+            .get('/api/users/1/audit')
+            .set('Authorization', `Bearer ${token}`),
+          request(app.getHttpServer())
             .post('/api/users')
             .set('Authorization', `Bearer ${token}`)
             .send({}),
@@ -460,6 +463,54 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .send({ isActive: false });
       expect(deactivateRes.status).toBe(200);
       expect(deactivateRes.body.isActive).toBe(false);
+
+      const reactivateRes = await request(app.getHttpServer())
+        .patch(`/api/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ isActive: true });
+      expect(reactivateRes.status).toBe(200);
+      expect(reactivateRes.body.isActive).toBe(true);
+
+      const auditRes = await request(app.getHttpServer())
+        .get(`/api/users/${createdUserId}/audit`)
+        .set('Authorization', `Bearer ${authToken}`);
+      expect(auditRes.status).toBe(200);
+      const items = auditRes.body.items;
+      expect(items.map((item: { action: string }) => item.action)).toEqual([
+        'USER_REACTIVATED',
+        'USER_DEACTIVATED',
+        'USER_UPDATED',
+        'ROLE_CHANGED',
+        'USER_CREATED',
+      ]);
+
+      const prisma = app.get(PrismaService);
+      const sadia = await prisma.user.findFirstOrThrow({ where: { username: 'sadia' } });
+      expect(
+        items.every(
+          (item: { actorUserId: number; actorName: string }) =>
+            item.actorUserId === Number(sadia.id) && item.actorName === 'sadia',
+        ),
+      ).toBe(true);
+      expect(items[0].before).toEqual({ isActive: false });
+      expect(items[0].after).toEqual({ isActive: true });
+      expect(items[1].before).toEqual({ isActive: true });
+      expect(items[1].after).toEqual({ isActive: false });
+      expect(items[2].before).toEqual({ name: 'IMS07 Created User' });
+      expect(items[2].after).toEqual({ name: 'IMS07 Updated User' });
+      expect(items[3].before).toEqual({ role: UserRole.SalesStaff });
+      expect(items[3].after).toEqual({ role: UserRole.StoreStaff });
+      expect(items[4].before).toBeNull();
+      expect(items[4].after).toEqual({
+        id: createdUserId,
+        name: 'IMS07 Created User',
+        username: `${tag}-create`.toLowerCase(),
+        email: `${tag}@example.local`.toLowerCase(),
+        role: UserRole.SalesStaff,
+        isActive: true,
+      });
+      expect(items[4].after).not.toHaveProperty('passwordHash');
+      expect(items[4].after).not.toHaveProperty('temporaryPassword');
     });
 
     it('deactivated users cannot log in, refresh, or use access tokens, and can log in after reactivation', async () => {
