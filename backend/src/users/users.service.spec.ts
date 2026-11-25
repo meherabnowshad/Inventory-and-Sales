@@ -93,9 +93,8 @@ describe('UsersService', () => {
         userId: adminId,
       },
     });
-    const savedJson = JSON.stringify(
-      tx.auditLog.create.mock.calls[0][0].data,
-      (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
+    const savedJson = JSON.stringify(tx.auditLog.create.mock.calls[0][0].data, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value,
     );
     expect(savedJson).not.toContain('Temporary1!');
     expect(savedJson).not.toContain('passwordHash');
