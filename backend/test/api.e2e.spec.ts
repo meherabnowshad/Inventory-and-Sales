@@ -42,6 +42,17 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     expect(refreshCookie).toBeDefined();
     refreshToken = refreshCookie?.split(';', 1)[0].slice('refreshToken='.length) ?? '';
 
+    roleTokens = {} as Record<UserRole, string>;
+    for (const [role, username] of [
+      [UserRole.Administrator, 'sadia'],
+      [UserRole.SalesStaff, 'rafi'],
+      [UserRole.StoreStaff, 'mitu'],
+    ] as const) {
+      const roleLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: username, password: 'Smart@1234' });
+      roleTokens[role] = roleLogin.body.accessToken || roleLogin.body.token;
+    }
   });
 
   afterAll(async () => {
@@ -461,6 +472,13 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
           .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
         expect(loginRes.status).toBe(200);
 
+        const rafiRefreshCookie = loginRes.headers['set-cookie']?.find((cookie) =>
+          cookie.startsWith('refreshToken='),
+        );
+        expect(rafiRefreshCookie).toBeDefined();
+        const rafiRefreshToken =
+          rafiRefreshCookie?.split(';', 1)[0].slice('refreshToken='.length) ?? '';
+
         const deactivateRes = await request(app.getHttpServer())
           .patch(`/api/users/${rafi.id}`)
           .set('Authorization', `Bearer ${authToken}`)
@@ -477,7 +495,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
         const rejectedRefresh = await request(app.getHttpServer())
           .post('/api/auth/refresh')
-          .send({ refreshToken: loginRes.body.refreshToken });
+          .send({ refreshToken: rafiRefreshToken });
         expect(rejectedRefresh.status).toBe(401);
         expect(rejectedRefresh.body.message).toBe('Invalid or expired refresh token');
 
