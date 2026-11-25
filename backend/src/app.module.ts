@@ -9,6 +9,8 @@ import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -23,11 +25,16 @@ import { ProductsModule } from './products/products.module';
     SalesModule,
     CategoriesModule,
     ProductsModule,
+    UsersModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
       useClass: AuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

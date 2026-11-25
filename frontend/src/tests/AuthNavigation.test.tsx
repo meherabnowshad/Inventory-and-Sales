@@ -112,6 +112,7 @@ describe('IMS-06.3: Role-Based Navigation & No-Access Screen (FR-AUTH-07)', () =
     expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /inventory/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /sales & orders/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Staff' })).toBeInTheDocument();
   });
 
   it('Sales Staff menu hides Dashboard and displays Sales and Inventory (FR-AUTH-07 Gherkin)', () => {
@@ -128,6 +129,7 @@ describe('IMS-06.3: Role-Based Navigation & No-Access Screen (FR-AUTH-07)', () =
 
     // Sales staff must NOT see Dashboard link
     expect(screen.queryByRole('link', { name: /dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Staff' })).not.toBeInTheDocument();
     // Sales staff sees Sales and Inventory
     expect(screen.getByRole('link', { name: /sales & orders/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /inventory/i })).toBeInTheDocument();
@@ -147,20 +149,21 @@ describe('IMS-06.3: Role-Based Navigation & No-Access Screen (FR-AUTH-07)', () =
 
     expect(screen.queryByRole('link', { name: /dashboard/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /sales & orders/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Staff' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /inventory/i })).toBeInTheDocument();
   });
 
   it('shows No Access page when a role navigates directly to a restricted URL (FR-AUTH-07)', () => {
-    // Logged in as Sales Staff trying to open Admin-only Dashboard
+    // Logged in as Sales Staff trying to open the Administrator-only Staff screen
     localStorage.setItem(TOKEN_STORAGE_KEY, 'sales_token');
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(SALES_USER));
 
     render(
-      <MemoryRouter initialEntries={['/admin-only']}>
+      <MemoryRouter initialEntries={['/staff']}>
         <AuthProvider>
           <Routes>
             <Route element={<ProtectedRoute allowedRoles={['Administrator']} />}>
-              <Route path="/admin-only" element={<div>Admin Secret Dashboard</div>} />
+              <Route path="/staff" element={<div>Staff Management</div>} />
             </Route>
           </Routes>
         </AuthProvider>
@@ -168,7 +171,7 @@ describe('IMS-06.3: Role-Based Navigation & No-Access Screen (FR-AUTH-07)', () =
     );
 
     // Secret content should not render
-    expect(screen.queryByText('Admin Secret Dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByText('Staff Management')).not.toBeInTheDocument();
 
     // 403 Forbidden Access Denied page is rendered directly
     expect(screen.getByText(/access denied/i)).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AuthResponse, LoginCredentials, AuthUser } from '../types/auth';
+import { AuthResponse, LoginCredentials, AuthUser, UserRole } from '../types/auth';
 
 // Defaults to '/api' so Vite proxy in vite.config.ts forwards to http://localhost:5001/api without CORS
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -7,6 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 8000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -15,7 +16,10 @@ export const apiClient = axios.create({
 // Storage keys
 export const TOKEN_STORAGE_KEY = 'smartmart_auth_token';
 export const USER_STORAGE_KEY = 'smartmart_auth_user';
-export const REFRESH_TOKEN_STORAGE_KEY = 'smartmart_refresh_token';
+const LEGACY_REFRESH_TOKEN_STORAGE_KEY = 'smartmart_refresh_token';
+
+// Remove refresh tokens persisted by older frontend versions.
+localStorage.removeItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY);
 
 // Listeners for 401 Unauthorized events (IMS-06.2)
 type UnauthorizedHandler = () => void;
@@ -32,7 +36,7 @@ export function triggerUnauthorized(): void {
   // Clear stored tokens
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(USER_STORAGE_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY);
   unauthorizedHandlers.forEach((handler) => handler());
 }
 
@@ -79,12 +83,6 @@ apiClient.interceptors.response.use(
       !originalRequest.url?.includes('/auth/login') &&
       !originalRequest.url?.includes('/auth/refresh')
     ) {
-      const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-      if (!refreshToken) {
-        triggerUnauthorized();
-        return Promise.reject(error);
-      }
-
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -100,16 +98,15 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshResponse = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/refresh`, {
-          refreshToken,
-        });
-        const { token, accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+        const refreshResponse = await axios.post<AuthResponse>(
+          `${API_BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+        const { token, accessToken } = refreshResponse.data;
         const finalAccessToken = accessToken || token;
 
         localStorage.setItem(TOKEN_STORAGE_KEY, finalAccessToken);
-        if (newRefreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, newRefreshToken);
-        }
 
         processQueue(null, finalAccessToken);
         originalRequest.headers.Authorization = `Bearer ${finalAccessToken}`;
@@ -191,9 +188,6 @@ export async function loginApi(credentials: LoginCredentials): Promise<AuthRespo
       usernameOrEmail: credentials.usernameOrEmail.trim(),
       password: credentials.password,
     });
-    if (response.data.refreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, response.data.refreshToken);
-    }
     return response.data;
   } catch (error: unknown) {
     // If backend returns a deliberate 429/401/400 error response from real API, never fall back to mock
@@ -236,18 +230,17 @@ export async function loginApi(credentials: LoginCredentials): Promise<AuthRespo
 }
 
 export async function refreshSessionApi(): Promise<AuthResponse | null> {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-  if (!refreshToken) return null;
   try {
-    const res = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/refresh`, { refreshToken });
-    const { token, accessToken, refreshToken: newRefreshToken, user } = res.data;
+    const res = await axios.post<AuthResponse>(
+      `${API_BASE_URL}/auth/refresh`,
+      {},
+      { withCredentials: true },
+    );
+    const { token, accessToken, user } = res.data;
     const finalToken = accessToken || token;
     localStorage.setItem(TOKEN_STORAGE_KEY, finalToken);
     if (user) {
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-    }
-    if (newRefreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, newRefreshToken);
     }
     return res.data;
   } catch {
@@ -257,19 +250,13 @@ export async function refreshSessionApi(): Promise<AuthResponse | null> {
 }
 
 export async function logoutApi(): Promise<void> {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
   try {
-    if (refreshToken) {
-      await apiClient.post('/auth/logout', { refreshToken });
-    } else {
-      await apiClient.post('/auth/logout');
-    }
+    await apiClient.post('/auth/logout');
   } catch {
     // Graceful fallback for offline / stub
   } finally {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   }
 }
 
@@ -343,6 +330,63 @@ export interface CategoryItem {
   productCount: number; // all products in the category, active and inactive (IMS-08.4)
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StaffUser {
+  id: number;
+  name: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  mustResetPw: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffListResponse {
+  items: StaffUser[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export type StaffStatusFilter = 'all' | 'active' | 'inactive';
+
+export interface StaffListParams {
+  q?: string;
+  role?: UserRole;
+  status: StaffStatusFilter;
+  page: number;
+  size: number;
+}
+
+export interface CreateStaffInput {
+  name: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  temporaryPassword: string;
+}
+
+export interface UpdateStaffInput {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+export async function fetchStaff(params: StaffListParams): Promise<StaffListResponse> {
+  const response = await apiClient.get<StaffListResponse>('/users', { params });
+  return response.data;
+}
+
+export async function createStaff(input: CreateStaffInput): Promise<void> {
+  await apiClient.post('/users', input);
+}
+
+export async function updateStaff(id: number, input: UpdateStaffInput): Promise<void> {
+  await apiClient.patch(`/users/${id}`, input);
 }
 
 // Values of the ?status= query parameter accepted by the backend (default is 'all')

@@ -10,6 +10,7 @@ import { AuthController } from './auth/auth.controller';
 import { HealthController } from './health/health.controller';
 import { InventoryController } from './inventory/inventory.controller';
 import { SalesController } from './sales/sales.controller';
+import { RolesGuard } from './auth/guards/roles.guard';
 
 describe('IMS-05.5: Auth middleware on every route (NFR-SEC-01)', () => {
   const reflector = new Reflector();
@@ -33,19 +34,16 @@ describe('IMS-05.5: Auth middleware on every route (NFR-SEC-01)', () => {
     } as unknown as ExecutionContext;
   };
 
-  it('registers AuthGuard globally as APP_GUARD on AppModule', () => {
+  it('registers AuthGuard before RolesGuard globally on AppModule', () => {
     const providers = Reflect.getMetadata('providers', AppModule) as Array<{
       provide?: unknown;
       useClass?: unknown;
     }>;
-    expect(providers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          provide: APP_GUARD,
-          useClass: AuthGuard,
-        }),
-      ]),
-    );
+    const guardProviders = providers.filter((provider) => provider.provide === APP_GUARD);
+    expect(guardProviders).toEqual([
+      expect.objectContaining({ provide: APP_GUARD, useClass: AuthGuard }),
+      expect.objectContaining({ provide: APP_GUARD, useClass: RolesGuard }),
+    ]);
   });
 
   it('rejects unauthenticated calls with HTTP 401 on protected routes (Inventory, Sales, Profile)', async () => {

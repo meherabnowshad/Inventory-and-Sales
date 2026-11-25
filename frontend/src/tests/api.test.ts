@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchHealth,
@@ -7,6 +8,8 @@ import {
   onUnauthorized,
   triggerUnauthorized,
   logoutApi,
+  loginApi,
+  refreshSessionApi,
 } from '../services/api';
 
 describe('Frontend API Service (fetchHealth)', () => {
@@ -97,6 +100,7 @@ describe('IMS-06.2: Token Storage & Authenticated API Client (FR-AUTH-03)', () =
   it('triggers unauthorized cleanup and fires listener on 401 response', async () => {
     localStorage.setItem(TOKEN_STORAGE_KEY, 'stale-token');
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ name: 'Test User' }));
+    localStorage.setItem('smartmart_refresh_token', 'legacy-refresh-token');
 
     const listener = vi.fn();
     const unsubscribe = onUnauthorized(listener);
@@ -110,6 +114,7 @@ describe('IMS-06.2: Token Storage & Authenticated API Client (FR-AUTH-03)', () =
 
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem('smartmart_refresh_token')).toBeNull();
     expect(listener).toHaveBeenCalledTimes(1);
 
     unsubscribe();
@@ -158,5 +163,52 @@ describe('IMS-06.2: Token Storage & Authenticated API Client (FR-AUTH-03)', () =
     expect(postSpy).toHaveBeenCalledWith('/auth/logout');
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+  });
+
+  it('does not persist refresh tokens returned from login', async () => {
+    const postSpy = vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+      data: {
+        user: {
+          id: 1,
+          name: 'Test User',
+          username: 'test',
+          email: 'test@example.com',
+          role: 'Administrator',
+        },
+        token: 'access-token',
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      },
+    } as never);
+
+    await loginApi({ usernameOrEmail: 'test', password: 'password' });
+
+    expect(postSpy).toHaveBeenCalledWith('/auth/login', {
+      usernameOrEmail: 'test',
+      password: 'password',
+    });
+    expect(localStorage.getItem('smartmart_refresh_token')).toBeNull();
+  });
+
+  it('refreshes with the HttpOnly cookie without storing a refresh token', async () => {
+    const postSpy = vi.spyOn(axios, 'post').mockResolvedValueOnce({
+      data: {
+        user: {
+          id: 1,
+          name: 'Test User',
+          username: 'test',
+          email: 'test@example.com',
+          role: 'Administrator',
+        },
+        token: 'new-access-token',
+        accessToken: 'new-access-token',
+      },
+    } as never);
+
+    await refreshSessionApi();
+
+    expect(postSpy).toHaveBeenCalledWith('/api/auth/refresh', {}, { withCredentials: true });
+    expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('new-access-token');
+    expect(localStorage.getItem('smartmart_refresh_token')).toBeNull();
   });
 });

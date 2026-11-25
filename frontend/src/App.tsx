@@ -9,6 +9,7 @@ import { SalesPage } from './pages/SalesPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { NoAccessPage } from './pages/NoAccessPage';
+import { StaffPage } from './pages/StaffPage';
 
 export function App() {
   return (
@@ -24,6 +25,7 @@ export function App() {
               {/* Administrator Only: Dashboard (FR-AUTH-07) */}
               <Route element={<ProtectedRoute allowedRoles={['Administrator']} />}>
                 <Route index element={<DashboardPage />} />
+                <Route path="staff" element={<StaffPage />} />
               </Route>
 
               {/* All Roles: Inventory (Admin, Sales Staff, Store Staff) */}
