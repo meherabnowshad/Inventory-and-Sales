@@ -337,7 +337,26 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
         expect(res!.isActive).toBe(true);
       });
 
-      it('lets an inactive product be edited', async () => {
+      it('refuses reactivation when the product category is inactive: 422 CATEGORY_INACTIVE', async () => {
+        prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
+        prisma.category.findUnique.mockResolvedValue({ id: 1, isActive: false });
+
+        const err = await rejection(service.update(41, { isActive: true }));
+        expect(err.getResponse!()).toMatchObject({ code: 'CATEGORY_INACTIVE' });
+        expect(prisma.product.update).not.toHaveBeenCalled();
+      });
+
+      it('lets reactivation move the product to an active category in the same request', async () => {
+        prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
+        prisma.category.findUnique.mockResolvedValue({ id: 2, isActive: true });
+
+        await service.update(41, { isActive: true, categoryId: 2 });
+        expect(prisma.category.findUnique).toHaveBeenCalledWith({ where: { id: 2 } });
+        expect(prisma.product.update).toHaveBeenCalled();
+      });
+
+      it('lets an inactive product be edited, even when its category is inactive', async () => {
+        prisma.category.findUnique.mockResolvedValue({ id: 1, isActive: false });
         prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
         await expect(service.update(41, { name: 'Renamed' })).resolves.toBeDefined();
       });

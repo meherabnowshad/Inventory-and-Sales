@@ -131,6 +131,62 @@ describe('Products API (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
     });
   });
 
+  describe('Roles (IMS-07 role guard): read = all roles, write = Administrator + Store Staff', () => {
+    const loginAs = async (username: string) => {
+      const res = await http()
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: username, password: 'Smart@1234' });
+      return (res.body.accessToken || res.body.token) as string;
+    };
+
+    it('Sales Staff cannot create or update: 403 FORBIDDEN_ROLE, nothing saved', async () => {
+      const sales = await loginAs('rafi');
+      const created = await createProduct();
+
+      const post = await http()
+        .post('/api/products')
+        .set('Authorization', `Bearer ${sales}`)
+        .send(validBody());
+      expect(post.status).toBe(403);
+      expect(post.body.code).toBe('FORBIDDEN_ROLE');
+
+      const patch = await http()
+        .patch(`/api/products/${created.body.id}`)
+        .set('Authorization', `Bearer ${sales}`)
+        .send({ name: 'Hacked' });
+      expect(patch.status).toBe(403);
+      expect(patch.body.code).toBe('FORBIDDEN_ROLE');
+
+      const stored = await prisma.product.findUnique({ where: { id: BigInt(created.body.id) } });
+      expect(stored!.name).toBe('Test product');
+    });
+
+    it('Sales Staff can read a product', async () => {
+      const sales = await loginAs('rafi');
+      const created = await createProduct();
+      const res = await http()
+        .get(`/api/products/${created.body.id}`)
+        .set('Authorization', `Bearer ${sales}`);
+      expect(res.status).toBe(200);
+    });
+
+    it('Store Staff can create and update', async () => {
+      const store = await loginAs('mitu');
+      const post = await http()
+        .post('/api/products')
+        .set('Authorization', `Bearer ${store}`)
+        .send(validBody());
+      expect(post.status).toBe(201);
+      createdProductIds.push(post.body.id);
+
+      const patch = await http()
+        .patch(`/api/products/${post.body.id}`)
+        .set('Authorization', `Bearer ${store}`)
+        .send({ name: 'By store staff' });
+      expect(patch.status).toBe(200);
+    });
+  });
+
   describe('GET /api/products/:id', () => {
     it('returns the product, 404 when it does not exist', async () => {
       const created = await createProduct();
@@ -286,6 +342,34 @@ describe('Products API (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
         expect(res.body.stockQty).toBe(product.stockQty); // stock is kept
       } finally {
         await prisma.product.update({ where: { id: product.id }, data: { isActive: true } });
+      }
+    });
+
+    it('refuses reactivation when the category is inactive: 422 CATEGORY_INACTIVE, then works after moving to an active category', async () => {
+      const temp = await prisma.category.create({
+        data: { name: `T10 inactive ${run}`, createdBy: (await prisma.user.findFirstOrThrow()).id },
+      });
+      try {
+        const created = await createProduct({ categoryId: Number(temp.id) });
+        expect(created.status).toBe(201);
+        await auth(http().patch(`/api/products/${created.body.id}`)).send({ isActive: false });
+        await prisma.category.update({ where: { id: temp.id }, data: { isActive: false } });
+
+        const refused = await auth(http().patch(`/api/products/${created.body.id}`)).send({
+          isActive: true,
+        });
+        expect(refused.status).toBe(422);
+        expect(refused.body.code).toBe('CATEGORY_INACTIVE');
+
+        const moved = await auth(http().patch(`/api/products/${created.body.id}`)).send({
+          isActive: true,
+          categoryId,
+        });
+        expect(moved.status).toBe(200);
+        expect(moved.body).toMatchObject({ isActive: true, categoryId });
+      } finally {
+        await prisma.product.deleteMany({ where: { categoryId: temp.id } });
+        await prisma.category.delete({ where: { id: temp.id } });
       }
     });
 

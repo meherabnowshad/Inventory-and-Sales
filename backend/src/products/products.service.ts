@@ -126,9 +126,12 @@ export class ProductsService {
         throw this.skuLocked();
       }
     }
-    // only check the category when it changes: a product may keep an inactive category it already has
-    if (dto.categoryId !== undefined && dto.categoryId !== existing.categoryId) {
-      await this.assertCategoryUsable(dto.categoryId);
+    // Check the category when it changes, and also on reactivation (inactive -> active) with the
+    // category the product will have. An edit that keeps an inactive category is still allowed
+    const categoryChanges = dto.categoryId !== undefined && dto.categoryId !== existing.categoryId;
+    const reactivating = dto.isActive === true && !existing.isActive;
+    if (categoryChanges || reactivating) {
+      await this.assertCategoryUsable(dto.categoryId ?? existing.categoryId);
     }
 
     try {
