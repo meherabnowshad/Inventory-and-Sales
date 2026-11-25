@@ -8,6 +8,7 @@ import { AuthGuard } from './auth/guards/auth.guard';
 import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CategoriesModule } from './categories/categories.module';
     InventoryModule,
     SalesModule,
     CategoriesModule,
+    ProductsModule,
   ],
   providers: [
     {
