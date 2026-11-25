@@ -138,7 +138,16 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
     roleId = role.id;
 
     await removeTestUsers(); // leftovers of an earlier run that stopped half way
-    for (const label of ['main', 'other', 'generic', 'deact', 'lock1', 'lock2', 'lock3']) {
+    for (const label of [
+      'main',
+      'other',
+      'generic',
+      'deact',
+      'deact2',
+      'lock1',
+      'lock2',
+      'lock3',
+    ]) {
       await createUser(label);
     }
     await createUser('inactive', false);
@@ -366,6 +375,53 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       expect(out.status).toBe(200);
       expect((await refresh(session.refreshToken)).status).toBe(401);
     });
+
+    // IMS-05.7: multi-session logout. Cases 1 and 2 of the ticket (A's and B's refresh token) are
+    // already asserted in TC-API-040 above; these tests add the access-token side.
+    it('TC-API-097: after logout with the access token, that session is rejected at once on every protected route (IMS-05.7)', async () => {
+      const sessionA = await loginAs('main');
+      await loginAs('main'); // session B stays logged in
+
+      // supertest keeps no cookie jar, so only the Bearer token reaches the logout route
+      const out = await http()
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${sessionA.accessToken}`);
+      expect(out.status).toBe(200);
+
+      for (const route of PROTECTED_ROUTES) {
+        const res = await http().get(route).set('Authorization', `Bearer ${sessionA.accessToken}`);
+        expect(res.status).toBe(401);
+        expect(res.body.message).toBe('Token has been revoked');
+      }
+    });
+
+    it('TC-API-097: after logout with the refresh cookie, the paired access token is rejected at once on every protected route (IMS-05.7)', async () => {
+      const session = await loginAs('main');
+      expect((await me(session.accessToken)).status).toBe(200);
+
+      expect((await logoutWithCookie(session.refreshCookie)).status).toBe(200);
+
+      for (const route of PROTECTED_ROUTES) {
+        const res = await http().get(route).set('Authorization', `Bearer ${session.accessToken}`);
+        expect(res.status).toBe(401);
+        expect(res.body.message).toBe('Token has been revoked');
+      }
+    });
+
+    it('TC-API-098: the other session keeps working on every protected route after one session logs out (IMS-05.7)', async () => {
+      const sessionA = await loginAs('main');
+      const sessionB = await loginAs('main');
+
+      const out = await http()
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${sessionA.accessToken}`);
+      expect(out.status).toBe(200);
+
+      for (const route of PROTECTED_ROUTES) {
+        const res = await http().get(route).set('Authorization', `Bearer ${sessionB.accessToken}`);
+        expect(res.status).toBe(200);
+      }
+    });
   });
 
   describe('Access and refresh tokens (IMS-05.3 | FR-AUTH-03, NFR-SEC-05)', () => {
@@ -479,6 +535,24 @@ describe('Auth API (IMS-05.6 | FR-AUTH-01 to 05, NFR-SEC-01)', () => {
       expect(renewed.body.message).toBe('Invalid or expired refresh token');
 
       expect((await me(session.accessToken)).status).toBe(401);
+    });
+
+    // IMS-05.7: TC-API-059 above uses one session; this one deactivates a user with two sessions.
+    // There is no deactivate endpoint on master yet, so the test sets isActive through Prisma.
+    it('TC-API-099: deactivating a user ends all of their sessions at once (IMS-05.7 | NFR-SEC-05)', async () => {
+      const sessionA = await loginAs('deact2');
+      const sessionB = await loginAs('deact2');
+      expect((await me(sessionA.accessToken)).status).toBe(200);
+      expect((await me(sessionB.accessToken)).status).toBe(200);
+
+      await prisma.user.update({ where: { id: users.deact2.id }, data: { isActive: false } });
+
+      for (const session of [sessionA, sessionB]) {
+        const renewed = await refresh(session.refreshToken);
+        expect(renewed.status).toBe(401);
+        expect(renewed.body.message).toBe('Invalid or expired refresh token');
+        expect((await me(session.accessToken)).status).toBe(401);
+      }
     });
   });
 
