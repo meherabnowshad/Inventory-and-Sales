@@ -54,7 +54,12 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
       const result = await authController.login(dto);
 
       expect(mockAuthService.validateAndLogin).toHaveBeenCalledWith(dto);
-      expect(result).toEqual(mockResponse);
+      expect(result).toEqual({
+        user: mockResponse.user,
+        accessToken: mockResponse.accessToken,
+        token: mockResponse.token,
+      });
+      expect(result).not.toHaveProperty('refreshToken');
     });
 
     it('sets HttpOnly cookie with refreshToken when Response object is provided', async () => {
@@ -80,7 +85,7 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
         cookie: vi.fn(),
       } as any;
 
-      await authController.login(dto, mockRes);
+      const result = await authController.login(dto, mockRes);
 
       expect(mockRes.cookie).toHaveBeenCalledWith(
         'refreshToken',
@@ -90,6 +95,7 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
           path: '/api/auth',
         }),
       );
+      expect(result).not.toHaveProperty('refreshToken');
     });
   });
 
@@ -113,7 +119,11 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
       const result = await authController.refresh({ refreshToken: 'valid_refresh_token_123' });
 
       expect(mockAuthService.refreshSession).toHaveBeenCalledWith('valid_refresh_token_123');
-      expect(result).toEqual(mockResponse);
+      expect(result).toEqual({
+        user: mockResponse.user,
+        accessToken: mockResponse.accessToken,
+        token: mockResponse.token,
+      });
     });
 
     it('delegates refresh token from Authorization header if body is empty', async () => {
@@ -136,7 +146,11 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
 
       expect(mockAuthService.cleanToken).toHaveBeenCalledWith('Bearer header_refresh_token_123');
       expect(mockAuthService.refreshSession).toHaveBeenCalledWith('header_refresh_token_123');
-      expect(result).toEqual(mockResponse);
+      expect(result).toEqual({
+        user: mockResponse.user,
+        accessToken: mockResponse.accessToken,
+        token: mockResponse.token,
+      });
     });
 
     it('delegates refresh token from HttpOnly cookie when body and header are omitted', async () => {
@@ -173,7 +187,12 @@ describe('AuthController (IMS-05.1, IMS-05.2, IMS-05.3 | FR-AUTH-01, FR-AUTH-02,
           path: '/api/auth',
         }),
       );
-      expect(result).toEqual(mockResponse);
+      expect(result).toEqual({
+        user: mockResponse.user,
+        accessToken: mockResponse.accessToken,
+        token: mockResponse.token,
+      });
+      expect(result).not.toHaveProperty('refreshToken');
     });
 
     it('throws UnauthorizedException if no refresh token is provided', async () => {

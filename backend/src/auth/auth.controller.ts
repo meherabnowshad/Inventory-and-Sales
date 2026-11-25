@@ -46,12 +46,13 @@ export class AuthController {
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) res?: Response,
-  ): Promise<LoginResponse> {
+  ): Promise<Omit<LoginResponse, 'refreshToken'>> {
     const result = await this.authService.validateAndLogin(loginDto);
-    if (res && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    const { refreshToken, ...response } = result;
+    if (res) {
+      res.cookie(REFRESH_COOKIE_NAME, refreshToken, REFRESH_COOKIE_OPTIONS);
     }
-    return result;
+    return response;
   }
 
   /**
@@ -67,7 +68,7 @@ export class AuthController {
     @Headers('authorization') authHeader?: string,
     @Req() req?: Request,
     @Res({ passthrough: true }) res?: Response,
-  ): Promise<RefreshResponse> {
+  ): Promise<Omit<RefreshResponse, 'refreshToken'>> {
     const token =
       req?.cookies?.[REFRESH_COOKIE_NAME] ||
       refreshDto?.refreshToken ||
@@ -78,10 +79,11 @@ export class AuthController {
     }
 
     const result = await this.authService.refreshSession(token);
-    if (res && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    const { refreshToken, ...response } = result;
+    if (res) {
+      res.cookie(REFRESH_COOKIE_NAME, refreshToken, REFRESH_COOKIE_OPTIONS);
     }
-    return result;
+    return response;
   }
 
   /**
