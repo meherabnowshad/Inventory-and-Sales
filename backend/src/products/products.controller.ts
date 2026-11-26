@@ -25,7 +25,11 @@ export class ProductsController {
 
   @Patch(':id')
   @Roles(UserRole.Administrator, UserRole.StoreStaff)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(id, dto);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductDto,
+    @Req() req: { user: AuthUserResponse },
+  ) {
+    return this.productsService.update(id, dto, BigInt(req.user.id));
   }
 }

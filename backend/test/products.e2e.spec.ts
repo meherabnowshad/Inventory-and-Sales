@@ -309,6 +309,96 @@ describe('Products API (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
     });
   });
 
+  // audit_log is append-only (a database trigger refuses delete), so these test rows stay in the
+  // table. They are found by the id of the product created in each test
+  describe('Price change is audited (FR-AUD-01, IMS-10.1)', () => {
+    const auditRows = (productId: number) =>
+      prisma.auditLog.findMany({
+        where: { entity: 'products', entityId: BigInt(productId) },
+        orderBy: { id: 'asc' },
+      });
+
+    it('SRS scenario: sadia changes the selling price 950.00 to 990.00, one row with user, time, before and after', async () => {
+      const sadia = await prisma.user.findFirstOrThrow({ where: { username: 'sadia' } });
+      const created = await createProduct({ purchasePrice: 700, sellingPrice: 950 });
+      const before = Date.now();
+
+      const res = await auth(http().patch(`/api/products/${created.body.id}`)).send({
+        sellingPrice: 990,
+      });
+      expect(res.status).toBe(200);
+
+      const rows = await auditRows(created.body.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        entity: 'products',
+        action: 'PRICE_CHANGE',
+        userId: sadia.id,
+        beforeJson: { purchase_price: '700.00', selling_price: '950.00' },
+        afterJson: { purchase_price: '700.00', selling_price: '990.00' },
+      });
+      expect(rows[0].createdAt.getTime()).toBeGreaterThanOrEqual(before - 60_000);
+    });
+
+    it('a name-only edit writes no audit row', async () => {
+      const created = await createProduct();
+      const res = await auth(http().patch(`/api/products/${created.body.id}`)).send({
+        name: 'Only the name changes',
+        minStock: 9,
+      });
+      expect(res.status).toBe(200);
+      expect(await auditRows(created.body.id)).toHaveLength(0);
+    });
+
+    it('sending the same price again writes no row; a later real change writes the next one', async () => {
+      const created = await createProduct({ purchasePrice: 700, sellingPrice: 950 });
+      const url = `/api/products/${created.body.id}`;
+
+      await auth(http().patch(url)).send({ sellingPrice: 950, purchasePrice: 700 });
+      expect(await auditRows(created.body.id)).toHaveLength(0);
+
+      await auth(http().patch(url)).send({ purchasePrice: 650 });
+      const rows = await auditRows(created.body.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].beforeJson).toMatchObject({ purchase_price: '700.00' });
+      expect(rows[0].afterJson).toMatchObject({ purchase_price: '650.00' });
+    });
+
+    it('creating, deactivating and reactivating write no audit row', async () => {
+      const created = await createProduct();
+      const url = `/api/products/${created.body.id}`;
+      await auth(http().patch(url)).send({ isActive: false });
+      await auth(http().patch(url)).send({ isActive: true });
+      expect(await auditRows(created.body.id)).toHaveLength(0);
+    });
+
+    it('a refused price change (400) writes no row and leaves the price as it was', async () => {
+      const created = await createProduct({ sellingPrice: 950 });
+      const res = await auth(http().patch(`/api/products/${created.body.id}`)).send({
+        sellingPrice: -5,
+      });
+      expect(res.status).toBe(400);
+      expect(await auditRows(created.body.id)).toHaveLength(0);
+      const stored = await prisma.product.findUnique({ where: { id: BigInt(created.body.id) } });
+      expect(stored!.sellingPrice.toFixed(2)).toBe('950.00');
+    });
+
+    it('records the user who made the change: Store Staff (mitu) is named, not sadia', async () => {
+      const mitu = await prisma.user.findFirstOrThrow({ where: { username: 'mitu' } });
+      const login = await http()
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: 'mitu', password: 'Smart@1234' });
+      const created = await createProduct();
+
+      const res = await http()
+        .patch(`/api/products/${created.body.id}`)
+        .set('Authorization', `Bearer ${login.body.accessToken || login.body.token}`)
+        .send({ sellingPrice: 1000 });
+      expect(res.status).toBe(200);
+      expect((await auditRows(created.body.id))[0].userId).toBe(mitu.id);
+    });
+  });
+
   describe('Deactivate a product (FR-PRD-05, BR-14)', () => {
     it('deactivates with isActive=false and reactivates with true; the product stays readable', async () => {
       const created = await createProduct();
