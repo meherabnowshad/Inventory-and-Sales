@@ -34,7 +34,7 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
   const PASSWORD = 'Smart@1234';
 
   const roleUsers: Record<UserRole, { id: number; username: string }> = {
-    [UserRole.Administrator]: { id: 0, username: `${PREFIX}admin` },
+    [UserRole.Administrator]: { id: 0, username: 'sadia' },
     [UserRole.SalesStaff]: { id: 0, username: `${PREFIX}sales` },
     [UserRole.StoreStaff]: { id: 0, username: `${PREFIX}store` },
   };
@@ -93,7 +93,13 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
     const roles = await prisma.role.findMany();
     const roleMap = new Map(roles.map((r) => [r.name, r.id]));
 
-    for (const role of [UserRole.Administrator, UserRole.SalesStaff, UserRole.StoreStaff]) {
+    const sadia = await prisma.user.findFirstOrThrow({
+      where: { username: 'sadia' },
+      select: { id: true },
+    });
+    roleUsers[UserRole.Administrator].id = Number(sadia.id);
+
+    for (const role of [UserRole.SalesStaff, UserRole.StoreStaff]) {
       const roleId = roleMap.get(role);
       if (!roleId) throw new Error(`Seeded role "${role}" not found`);
       const created = await prisma.user.create({
