@@ -8,6 +8,7 @@ import { AuthGuard } from './auth/guards/auth.guard';
 import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ProductsModule } from './products/products.module';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { UsersModule } from './users/users.module';
 
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     InventoryModule,
     SalesModule,
     CategoriesModule,
+    ProductsModule,
     UsersModule,
   ],
   providers: [
