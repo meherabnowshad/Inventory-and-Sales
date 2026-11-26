@@ -5,6 +5,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { ProductsService } from '../src/products/products.service';
 
 // API tests for the product endpoints, against the real test database (IMS-10 | FR-PRD-01 to FR-PRD-05).
 // Only what needs the real database or the real HTTP stack is here: unique index, SKU lock trigger,
@@ -381,6 +382,20 @@ describe('Products API (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       expect(await auditRows(created.body.id)).toHaveLength(0);
       const stored = await prisma.product.findUnique({ where: { id: BigInt(created.body.id) } });
       expect(stored!.sellingPrice.toFixed(2)).toBe('950.00');
+    });
+
+    it('rolls back the price when the audit insert fails (real database transaction)', async () => {
+      const created = await createProduct({ purchasePrice: 700, sellingPrice: 950 });
+      const service = app.get(ProductsService, { strict: false });
+
+      // a user id that does not exist: the audit insert breaks the audit_log -> users foreign key
+      await expect(
+        service.update(created.body.id, { sellingPrice: 990 }, 999_999_999n),
+      ).rejects.toBeDefined();
+
+      const stored = await prisma.product.findUnique({ where: { id: BigInt(created.body.id) } });
+      expect(stored!.sellingPrice.toFixed(2)).toBe('950.00'); // the price update was undone
+      expect(await auditRows(created.body.id)).toHaveLength(0);
     });
 
     it('records the user who made the change: Store Staff (mitu) is named, not sadia', async () => {
