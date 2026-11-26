@@ -692,6 +692,139 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       },
     );
 
+    it('validates phone and email and stores a blank email as null', async () => {
+      const token = roleTokens[UserRole.Administrator];
+      const invalidPhone = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: `${tag}-invalid-phone`, phone: '+8801712345678' });
+      expect(invalidPhone.status).toBe(400);
+      expect(invalidPhone.body.message).toContain(
+        'Phone must be 11 digits and start with 01',
+      );
+
+      const created = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: `${tag}-blank-email`, phone: nextPhone(), email: '  ' });
+      expect(created.status).toBe(201);
+      expect(created.body.email).toBeNull();
+
+      const invalidEmail = await request(app.getHttpServer())
+        .patch(`/api/suppliers/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ email: 'not-an-email' });
+      expect(invalidEmail.status).toBe(400);
+      expect(invalidEmail.body.message).toContain('Enter a valid email address');
+
+      const invalidUpdatePhone = await request(app.getHttpServer())
+        .patch(`/api/suppliers/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ phone: '02712345678' });
+      expect(invalidUpdatePhone.status).toBe(400);
+      expect(invalidUpdatePhone.body.message).toContain(
+        'Phone must be 11 digits and start with 01',
+      );
+    });
+
+    it('warns about duplicate names and permits confirmed duplicates', async () => {
+      const token = roleTokens[UserRole.Administrator];
+      const name = `${tag}-duplicate`;
+      const existing = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name, phone: nextPhone() });
+      expect(existing.status).toBe(201);
+
+      const duplicate = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: `  ${name.toUpperCase()}  `, phone: nextPhone() });
+      expect(duplicate.status).toBe(409);
+      expect(duplicate.body).toEqual({
+        code: 'SUPPLIER_NAME_EXISTS',
+        message:
+          'A supplier with this name already exists. Send confirmDuplicate=true to save anyway.',
+        existing: { id: existing.body.id, name, isActive: true },
+      });
+
+      const confirmed = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name, phone: nextPhone(), confirmDuplicate: true });
+      expect(confirmed.status).toBe(201);
+    });
+
+    it('warns on updates to existing or inactive supplier names, but not its own name', async () => {
+      const token = roleTokens[UserRole.Administrator];
+      const existingName = `${tag}-existing`;
+      const targetName = `${tag}-target`;
+      const inactiveName = `${tag}-inactive`;
+
+      try {
+        const existing = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: existingName, phone: nextPhone() });
+        expect(existing.status).toBe(201);
+
+        const target = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: targetName, phone: nextPhone() });
+        expect(target.status).toBe(201);
+
+        const sameName = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${target.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: target.body.name });
+        expect(sameName.status).toBe(200);
+
+        const duplicate = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${target.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: existingName });
+        expect(duplicate.status).toBe(409);
+        expect(duplicate.body).toMatchObject({
+          code: 'SUPPLIER_NAME_EXISTS',
+          existing: { id: existing.body.id, name: existingName, isActive: true },
+        });
+
+        const confirmedUpdate = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${target.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: existingName, confirmDuplicate: true });
+        expect(confirmedUpdate.status).toBe(200);
+        expect(confirmedUpdate.body.name).toBe(existingName);
+
+        const inactive = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: inactiveName, phone: nextPhone() });
+        expect(inactive.status).toBe(201);
+
+        const deactivate = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${inactive.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ isActive: false });
+        expect(deactivate.status).toBe(200);
+
+        const inactiveDuplicate = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: inactiveName, phone: nextPhone() });
+        expect(inactiveDuplicate.status).toBe(409);
+        expect(inactiveDuplicate.body.existing).toMatchObject({
+          id: inactive.body.id,
+          isActive: false,
+        });
+      } finally {
+        await app.get(PrismaService).supplier.deleteMany({
+          where: { name: { in: [existingName, targetName, inactiveName] } },
+        });
+      }
+    });
+
     it('rafi receives 403 on every supplier route', async () => {
       const loginRes = await request(app.getHttpServer())
         .post('/api/auth/login')
@@ -779,3 +912,4 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
   });
 });
+

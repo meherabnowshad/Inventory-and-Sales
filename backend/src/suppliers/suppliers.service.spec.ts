@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { SuppliersService } from './suppliers.service';
 
@@ -21,6 +21,7 @@ describe('SuppliersService', () => {
   const tx = {
     supplier: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       update: vi.fn(),
     },
   };
@@ -29,6 +30,7 @@ describe('SuppliersService', () => {
     supplier: {
       create: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
     },
@@ -44,9 +46,11 @@ describe('SuppliersService', () => {
     );
     prisma.supplier.create.mockResolvedValue(supplier);
     prisma.supplier.findUnique.mockResolvedValue(supplier);
+    prisma.supplier.findFirst.mockResolvedValue(null);
     prisma.supplier.findMany.mockResolvedValue([supplier]);
     prisma.supplier.count.mockResolvedValue(1);
-    tx.supplier.findUnique.mockResolvedValue({ id: supplierId });
+    tx.supplier.findUnique.mockResolvedValue({ id: supplierId, name: supplier.name });
+    tx.supplier.findFirst.mockResolvedValue(null);
     tx.supplier.update.mockResolvedValue(supplier);
     service = new SuppliersService(prisma as never);
   });
@@ -82,8 +86,196 @@ describe('SuppliersService', () => {
     );
 
     await expect(
-      service.create({ name: 'Acme Supply', phone: 'invalid' } as never, createdBy),
+      service.create({ name: 'Acme Supply', phone: '01712345678' } as never, createdBy),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.each([
+    '0171234567',
+    '017123456789',
+    '01712abc678',
+    '+8801712345678',
+    '02712345678',
+    '01712 45678',
+  ])('rejects invalid phone %s before writing', async (phone) => {
+    await expect(
+      service.create({ name: 'Acme Supply', phone } as never, createdBy),
+    ).rejects.toThrow(new BadRequestException('Phone must be 11 digits and start with 01'));
+    expect(prisma.supplier.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid update phones before writing', async () => {
+    await expect(
+      service.update(Number(supplierId), { phone: '+8801712345678' } as never),
+    ).rejects.toThrow(new BadRequestException('Phone must be 11 digits and start with 01'));
+    expect(tx.supplier.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['malformed', 'not-an-email'],
+    ['too long', `${'a'.repeat(243)}@example.com`],
+  ])('rejects a %s email', async (_label, email) => {
+    await expect(
+      service.create({ name: 'Acme Supply', phone: '01712345678', email } as never, createdBy),
+    ).rejects.toThrow(new BadRequestException('Enter a valid email address'));
+    expect(prisma.supplier.create).not.toHaveBeenCalled();
+  });
+
+  it('converts an empty email to null', async () => {
+    await service.create(
+      { name: 'Acme Supply', phone: '01712345678', email: '  ' } as never,
+      createdBy,
+    );
+    expect(prisma.supplier.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ email: null }) }),
+    );
+  });
+
+  it.each([
+    ['', 'Supplier name is required'],
+    ['   ', 'Supplier name is required'],
+    ['a'.repeat(121), 'Supplier name must be 120 characters or fewer'],
+  ])('rejects invalid supplier name', async (name, message) => {
+    await expect(
+      service.create({ name, phone: '01712345678' } as never, createdBy),
+    ).rejects.toThrow(new BadRequestException(message));
+    expect(prisma.supplier.create).not.toHaveBeenCalled();
+  });
+
+  it('warns on a duplicate supplier name and does not create it', async () => {
+    const existing = { id: BigInt(18), name: 'Existing Supplier', isActive: true };
+    prisma.supplier.findFirst.mockResolvedValue(existing);
+
+    await expect(
+      service.create({ name: '  eXisting Supplier  ', phone: '01712345678' } as never, createdBy),
+    ).rejects.toThrow(
+      new ConflictException({
+        code: 'SUPPLIER_NAME_EXISTS',
+        message:
+          'A supplier with this name already exists. Send confirmDuplicate=true to save anyway.',
+        existing: { id: 18, name: 'Existing Supplier', isActive: true },
+      }),
+    );
+    expect(prisma.supplier.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { equals: 'eXisting Supplier', mode: 'insensitive' } },
+      }),
+    );
+    expect(prisma.supplier.create).not.toHaveBeenCalled();
+  });
+
+  it('allows creating a duplicate when explicitly confirmed', async () => {
+    prisma.supplier.findFirst.mockResolvedValue({
+      id: BigInt(18),
+      name: 'Existing Supplier',
+      isActive: true,
+    });
+
+    await service.create(
+      {
+        name: 'Existing Supplier',
+        phone: '01712345678',
+        confirmDuplicate: true,
+      } as never,
+      createdBy,
+    );
+
+    expect(prisma.supplier.findFirst).not.toHaveBeenCalled();
+    expect(prisma.supplier.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ confirmDuplicate: true }),
+      }),
+    );
+  });
+
+  it('checks a renamed supplier for duplicates and excludes itself', async () => {
+    const existing = { id: BigInt(18), name: 'Another Supplier', isActive: true };
+    tx.supplier.findFirst.mockResolvedValue(existing);
+
+    await expect(
+      service.update(Number(supplierId), { name: 'Another Supplier' } as never),
+    ).rejects.toThrow(
+      new ConflictException({
+        code: 'SUPPLIER_NAME_EXISTS',
+        message:
+          'A supplier with this name already exists. Send confirmDuplicate=true to save anyway.',
+        existing: { id: 18, name: 'Another Supplier', isActive: true },
+      }),
+    );
+    expect(tx.supplier.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          name: { equals: 'Another Supplier', mode: 'insensitive' },
+          id: { not: supplierId },
+        },
+        orderBy: { id: 'asc' },
+      }),
+    );
+    expect(tx.supplier.update).not.toHaveBeenCalled();
+  });
+
+  it('reports the lowest id when multiple suppliers match an updated name', async () => {
+    const matches = [
+      { id: BigInt(18), name: 'Another Supplier', isActive: true },
+      { id: BigInt(5), name: 'Another Supplier', isActive: false },
+    ] as const;
+    tx.supplier.findFirst.mockResolvedValue(matches[1]);
+
+    await expect(
+      service.update(Number(supplierId), { name: 'Another Supplier' } as never),
+    ).rejects.toThrow(
+      new ConflictException({
+        code: 'SUPPLIER_NAME_EXISTS',
+        message:
+          'A supplier with this name already exists. Send confirmDuplicate=true to save anyway.',
+        existing: { id: 5, name: 'Another Supplier', isActive: false },
+      }),
+    );
+    expect(tx.supplier.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { id: 'asc' } }),
+    );
+  });
+
+  it('does not check for a duplicate when keeping the current name', async () => {
+    await service.update(Number(supplierId), { name: supplier.name } as never);
+
+    expect(tx.supplier.findFirst).not.toHaveBeenCalled();
+    expect(tx.supplier.update).toHaveBeenCalled();
+  });
+
+  it('allows a duplicate name update when explicitly confirmed', async () => {
+    tx.supplier.findFirst.mockResolvedValue({
+      id: BigInt(18),
+      name: 'Another Supplier',
+      isActive: true,
+    });
+
+    await service.update(Number(supplierId), {
+      name: 'Another Supplier',
+      confirmDuplicate: true,
+    } as never);
+
+    expect(tx.supplier.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ confirmDuplicate: true }),
+      }),
+    );
+  });
+
+  it('warns when the matching supplier is inactive', async () => {
+    const inactive = { id: BigInt(18), name: 'Inactive Supplier', isActive: false };
+    prisma.supplier.findFirst.mockResolvedValue(inactive);
+
+    await expect(
+      service.create({ name: 'Inactive Supplier', phone: '01712345678' } as never, createdBy),
+    ).rejects.toThrow(
+      new ConflictException({
+        code: 'SUPPLIER_NAME_EXISTS',
+        message:
+          'A supplier with this name already exists. Send confirmDuplicate=true to save anyway.',
+        existing: { id: 18, name: 'Inactive Supplier', isActive: false },
+      }),
+    );
   });
 
   it('lists with paging, name/id sort, and active or inactive status filters', async () => {

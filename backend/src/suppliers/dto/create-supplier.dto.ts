@@ -1,11 +1,19 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateSupplierDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @IsNotEmpty()
-  @MaxLength(120)
+  @IsNotEmpty({ message: 'Supplier name is required' })
+  @MaxLength(120, { message: 'Supplier name must be 120 characters or fewer' })
   name: string;
 
   @IsOptional()
@@ -15,15 +23,13 @@ export class CreateSupplierDto {
   contactPerson?: string | null;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(11)
+  @Matches(/^01[0-9]{9}$/, { message: 'Phone must be 11 digits and start with 01' })
   phone: string;
 
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() || null : value))
-  @IsEmail()
-  @MaxLength(254)
+  @IsEmail({}, { message: 'Enter a valid email address' })
+  @MaxLength(254, { message: 'Enter a valid email address' })
   email?: string | null;
 
   @IsOptional()
@@ -31,4 +37,8 @@ export class CreateSupplierDto {
   @IsString()
   @MaxLength(255)
   address?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmDuplicate?: boolean;
 }
