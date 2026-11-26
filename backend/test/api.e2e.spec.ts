@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -13,6 +13,12 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
   let authToken: string;
   let refreshToken: string;
   let roleTokens: Record<UserRole, string>;
+  const getRoleToken = (role: UserRole, token = roleTokens[role]): string => {
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new Error(`No access token found for role "${role}"`);
+    }
+    return token;
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -390,7 +396,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
     it('rafi and mitu get 403 on every users route', async () => {
       for (const role of [UserRole.SalesStaff, UserRole.StoreStaff]) {
-        const token = roleTokens[role];
+        const token = getRoleToken(role);
         const requests = [
           request(app.getHttpServer()).get('/api/users').set('Authorization', `Bearer ${token}`),
           request(app.getHttpServer()).get('/api/users/1').set('Authorization', `Bearer ${token}`),
@@ -617,6 +623,331 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         });
       expect(secondEmail.status).toBe(409);
       expect(secondEmail.body.code).toBe('EMAIL_TAKEN');
+    });
+  });
+
+  describe('Suppliers API (/api/suppliers)', () => {
+    const tag = `IMS14-${Date.now()}`;
+    let phoneSequence = 0;
+    const nextPhone = () =>
+      `01${String((Date.now() + phoneSequence++) % 1_000_000_000).padStart(9, '0')}`;
+
+    afterEach(async () => {
+      const prisma = app.get(PrismaService);
+      await prisma.supplier.deleteMany({ where: { name: { startsWith: tag } } });
+    });
+
+    it.each([UserRole.Administrator, UserRole.StoreStaff])(
+      '%s can create, list, get, update, and deactivate a supplier',
+      async (role) => {
+        const phone = nextPhone();
+        const name = `${tag}-${role}-${phone}`;
+        const token = getRoleToken(role);
+        const createRes = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            name,
+            contactPerson: '  Test Contact  ',
+            phone: ` ${phone} `,
+            email: '  supplier@example.local  ',
+            address: '  Dhaka  ',
+          });
+
+        expect(createRes.status).toBe(201);
+        expect(createRes.body).toMatchObject({
+          name,
+          contactPerson: 'Test Contact',
+          phone,
+          email: 'supplier@example.local',
+          address: 'Dhaka',
+          isActive: true,
+        });
+        expect(createRes.body.id).toEqual(expect.any(Number));
+        const supplierId = createRes.body.id;
+
+        const listRes = await request(app.getHttpServer())
+          .get('/api/suppliers?status=active&page=1&size=100')
+          .set('Authorization', `Bearer ${token}`);
+        expect(listRes.status).toBe(200);
+        expect(listRes.body).toMatchObject({ page: 1, size: 100 });
+        expect(listRes.body.items.some((item: { id: number }) => item.id === supplierId)).toBe(
+          true,
+        );
+
+        const getRes = await request(app.getHttpServer())
+          .get(`/api/suppliers/${supplierId}`)
+          .set('Authorization', `Bearer ${token}`);
+        expect(getRes.status).toBe(200);
+        expect(getRes.body.id).toBe(supplierId);
+
+        const updateRes = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${supplierId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: `${name}-updated`, address: 'Updated address' });
+        expect(updateRes.status).toBe(200);
+        expect(updateRes.body.name).toBe(`${name}-updated`);
+        expect(updateRes.body.address).toBe('Updated address');
+
+        const deactivateRes = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${supplierId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ isActive: false });
+        expect(deactivateRes.status).toBe(200);
+        expect(deactivateRes.body.isActive).toBe(false);
+      },
+    );
+
+    it('searches suppliers by partial name and phone and restricts search to Store Staff', async () => {
+      const salesStaffLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+      const salesStaffToken = getRoleToken(
+        UserRole.SalesStaff,
+        salesStaffLogin.body.accessToken || salesStaffLogin.body.token,
+      );
+      const storeToken = getRoleToken(UserRole.StoreStaff);
+      const firstPhone = nextPhone();
+      const secondPhone = nextPhone();
+      const namePart = `${tag}-search-name`;
+      const suppliers = [
+        { name: `${namePart}-first`, phone: firstPhone },
+        { name: `${tag}-phone-search-second`, phone: secondPhone },
+      ];
+
+      for (const supplier of suppliers) {
+        const created = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${storeToken}`)
+          .send(supplier);
+        expect(created.status).toBe(201);
+      }
+
+      const byName = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: namePart })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(byName.status).toBe(200);
+      expect(byName.body).toMatchObject({
+        items: expect.arrayContaining([expect.objectContaining({ name: suppliers[0].name })]),
+      });
+
+      const byPhone = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: secondPhone.slice(2, 8) })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(byPhone.status).toBe(200);
+      expect(byPhone.body.items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ phone: secondPhone })]),
+      );
+
+      const unknown = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: `${tag}-unknown-search-term` })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(unknown.status).toBe(200);
+      expect(unknown.body).toMatchObject({ items: [], total: 0 });
+
+      const salesStaff = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: namePart })
+        .set('Authorization', `Bearer ${salesStaffToken}`);
+      expect(salesStaff.status).toBe(403);
+    });
+
+    it('validates phone and email and stores a blank email as null', async () => {
+      const token = getRoleToken(UserRole.Administrator);
+      const invalidPhone = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: `${tag}-invalid-phone`, phone: '+8801712345678' });
+      expect(invalidPhone.status).toBe(400);
+      expect(invalidPhone.body.message).toContain('Phone must be 11 digits and start with 01');
+
+      const created = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: `${tag}-blank-email`, phone: nextPhone(), email: '  ' });
+      expect(created.status).toBe(201);
+      expect(created.body.email).toBeNull();
+
+      const invalidEmail = await request(app.getHttpServer())
+        .patch(`/api/suppliers/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ email: 'not-an-email' });
+      expect(invalidEmail.status).toBe(400);
+      expect(invalidEmail.body.message).toContain('Enter a valid email address');
+
+      const invalidUpdatePhone = await request(app.getHttpServer())
+        .patch(`/api/suppliers/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ phone: '02712345678' });
+      expect(invalidUpdatePhone.status).toBe(400);
+      expect(invalidUpdatePhone.body.message).toContain(
+        'Phone must be 11 digits and start with 01',
+      );
+    });
+
+    it('warns about duplicate names and permits confirmed duplicates', async () => {
+      const token = getRoleToken(UserRole.Administrator);
+      const name = `${tag}-duplicate`;
+      const existing = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name, phone: nextPhone() });
+      expect(existing.status).toBe(201);
+
+      const duplicate = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: `  ${name.toUpperCase()}  `, phone: nextPhone() });
+      expect(duplicate.status).toBe(409);
+      expect(duplicate.body).toEqual({
+        code: 'SUPPLIER_NAME_EXISTS',
+        message:
+          'A supplier with this name already exists. Send confirmDuplicate=true to save anyway.',
+        existing: { id: existing.body.id, name, isActive: true },
+      });
+
+      const confirmed = await request(app.getHttpServer())
+        .post('/api/suppliers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name, phone: nextPhone(), confirmDuplicate: true });
+      expect(confirmed.status).toBe(201);
+    });
+
+    it('warns on updates to existing or inactive supplier names, but not its own name', async () => {
+      const token = getRoleToken(UserRole.Administrator);
+      const existingName = `${tag}-existing`;
+      const targetName = `${tag}-target`;
+      const inactiveName = `${tag}-inactive`;
+
+      try {
+        const existing = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: existingName, phone: nextPhone() });
+        expect(existing.status).toBe(201);
+
+        const target = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: targetName, phone: nextPhone() });
+        expect(target.status).toBe(201);
+
+        const sameName = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${target.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: target.body.name });
+        expect(sameName.status).toBe(200);
+
+        const duplicate = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${target.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: existingName });
+        expect(duplicate.status).toBe(409);
+        expect(duplicate.body).toMatchObject({
+          code: 'SUPPLIER_NAME_EXISTS',
+          existing: { id: existing.body.id, name: existingName, isActive: true },
+        });
+
+        const confirmedUpdate = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${target.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: existingName, confirmDuplicate: true });
+        expect(confirmedUpdate.status).toBe(200);
+        expect(confirmedUpdate.body.name).toBe(existingName);
+
+        const inactive = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: inactiveName, phone: nextPhone() });
+        expect(inactive.status).toBe(201);
+
+        const deactivate = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${inactive.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ isActive: false });
+        expect(deactivate.status).toBe(200);
+
+        const inactiveDuplicate = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: inactiveName, phone: nextPhone() });
+        expect(inactiveDuplicate.status).toBe(409);
+        expect(inactiveDuplicate.body.existing).toMatchObject({
+          id: inactive.body.id,
+          isActive: false,
+        });
+      } finally {
+        await app.get(PrismaService).supplier.deleteMany({
+          where: { name: { in: [existingName, targetName, inactiveName] } },
+        });
+      }
+    });
+
+    it('rafi receives 403 on every supplier route', async () => {
+      const loginRes = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+      const token = getRoleToken(
+        UserRole.SalesStaff,
+        loginRes.body.accessToken || loginRes.body.token,
+      );
+      const requests = [
+        {
+          method: 'GET',
+          url: '/api/suppliers',
+          pending: request(app.getHttpServer())
+            .get('/api/suppliers')
+            .set('Authorization', `Bearer ${token}`),
+        },
+        {
+          method: 'GET',
+          url: '/api/suppliers/1',
+          pending: request(app.getHttpServer())
+            .get('/api/suppliers/1')
+            .set('Authorization', `Bearer ${token}`),
+        },
+        {
+          method: 'POST',
+          url: '/api/suppliers',
+          pending: request(app.getHttpServer())
+            .post('/api/suppliers')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ name: `${tag}-forbidden`, phone: nextPhone() }),
+        },
+        {
+          method: 'PATCH',
+          url: '/api/suppliers/1',
+          pending: request(app.getHttpServer())
+            .patch('/api/suppliers/1')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ isActive: false }),
+        },
+      ];
+
+      for (const { method, url, pending } of requests) {
+        const res = await pending;
+        expect(res.status, `${method} ${url}`).toBe(403);
+        expect(res.body.code).toBe('FORBIDDEN_ROLE');
+      }
+    });
+
+    it('rejects unauthenticated requests on every supplier route with 401', async () => {
+      const requests = [
+        request(app.getHttpServer()).get('/api/suppliers'),
+        request(app.getHttpServer()).get('/api/suppliers/1'),
+        request(app.getHttpServer())
+          .post('/api/suppliers')
+          .send({ name: `${tag}-unauthenticated`, phone: nextPhone() }),
+        request(app.getHttpServer()).patch('/api/suppliers/1').send({ isActive: false }),
+      ];
+
+      for (const pending of requests) {
+        const res = await pending;
+        expect(res.status).toBe(401);
+      }
     });
   });
 
