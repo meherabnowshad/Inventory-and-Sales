@@ -10,6 +10,7 @@ import { SalesModule } from './sales/sales.module';
 import { CategoriesModule } from './categories/categories.module';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { UsersModule } from './users/users.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     SalesModule,
     CategoriesModule,
     UsersModule,
+    SuppliersModule,
   ],
   providers: [
     {

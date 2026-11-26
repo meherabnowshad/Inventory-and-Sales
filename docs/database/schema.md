@@ -172,6 +172,8 @@ CREATE TRIGGER products_sku_locked
 
 An inactive supplier cannot receive a new purchase order (BR-11). This is a service check on create, because it depends on the row's current state.
 
+The `/api/suppliers` endpoints support supplier creation, listing, viewing, updating, and deactivation.
+
 ---
 
 ### 2.6 `customers`

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -617,6 +617,140 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         });
       expect(secondEmail.status).toBe(409);
       expect(secondEmail.body.code).toBe('EMAIL_TAKEN');
+    });
+  });
+
+  describe('Suppliers API (/api/suppliers)', () => {
+    const tag = `IMS14-${Date.now()}`;
+    let phoneSequence = 0;
+    const nextPhone = () =>
+      `01${String((Date.now() + phoneSequence++) % 1_000_000_000).padStart(9, '0')}`;
+
+    afterEach(async () => {
+      const prisma = app.get(PrismaService);
+      await prisma.supplier.deleteMany({ where: { name: { startsWith: tag } } });
+    });
+
+    it.each([UserRole.Administrator, UserRole.StoreStaff])(
+      '%s can create, list, get, update, and deactivate a supplier',
+      async (role) => {
+        const phone = nextPhone();
+        const name = `${tag}-${role}-${phone}`;
+        const token = roleTokens[role];
+        const createRes = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            name,
+            contactPerson: '  Test Contact  ',
+            phone: ` ${phone} `,
+            email: '  supplier@example.local  ',
+            address: '  Dhaka  ',
+          });
+
+        expect(createRes.status).toBe(201);
+        expect(createRes.body).toMatchObject({
+          name,
+          contactPerson: 'Test Contact',
+          phone,
+          email: 'supplier@example.local',
+          address: 'Dhaka',
+          isActive: true,
+        });
+        expect(createRes.body.id).toEqual(expect.any(Number));
+        const supplierId = createRes.body.id;
+
+        const listRes = await request(app.getHttpServer())
+          .get('/api/suppliers?status=active&page=1&size=100')
+          .set('Authorization', `Bearer ${token}`);
+        expect(listRes.status).toBe(200);
+        expect(listRes.body).toMatchObject({ page: 1, size: 100 });
+        expect(listRes.body.items.some((item: { id: number }) => item.id === supplierId)).toBe(
+          true,
+        );
+
+        const getRes = await request(app.getHttpServer())
+          .get(`/api/suppliers/${supplierId}`)
+          .set('Authorization', `Bearer ${token}`);
+        expect(getRes.status).toBe(200);
+        expect(getRes.body.id).toBe(supplierId);
+
+        const updateRes = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${supplierId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: `${name}-updated`, address: 'Updated address' });
+        expect(updateRes.status).toBe(200);
+        expect(updateRes.body.name).toBe(`${name}-updated`);
+        expect(updateRes.body.address).toBe('Updated address');
+
+        const deactivateRes = await request(app.getHttpServer())
+          .patch(`/api/suppliers/${supplierId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ isActive: false });
+        expect(deactivateRes.status).toBe(200);
+        expect(deactivateRes.body.isActive).toBe(false);
+      },
+    );
+
+    it('rafi receives 403 on every supplier route', async () => {
+      const loginRes = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+      const token = loginRes.body.accessToken || loginRes.body.token;
+      const requests = [
+        {
+          method: 'GET',
+          url: '/api/suppliers',
+          pending: request(app.getHttpServer())
+            .get('/api/suppliers')
+            .set('Authorization', `Bearer ${token}`),
+        },
+        {
+          method: 'GET',
+          url: '/api/suppliers/1',
+          pending: request(app.getHttpServer())
+            .get('/api/suppliers/1')
+            .set('Authorization', `Bearer ${token}`),
+        },
+        {
+          method: 'POST',
+          url: '/api/suppliers',
+          pending: request(app.getHttpServer())
+            .post('/api/suppliers')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ name: `${tag}-forbidden`, phone: nextPhone() }),
+        },
+        {
+          method: 'PATCH',
+          url: '/api/suppliers/1',
+          pending: request(app.getHttpServer())
+            .patch('/api/suppliers/1')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ isActive: false }),
+        },
+      ];
+
+      for (const { method, url, pending } of requests) {
+        const res = await pending;
+        expect(res.status, `${method} ${url}`).toBe(403);
+        expect(res.body.code).toBe('FORBIDDEN_ROLE');
+      }
+    });
+
+    it('rejects unauthenticated requests on every supplier route with 401', async () => {
+      const requests = [
+        request(app.getHttpServer()).get('/api/suppliers'),
+        request(app.getHttpServer()).get('/api/suppliers/1'),
+        request(app.getHttpServer())
+          .post('/api/suppliers')
+          .send({ name: `${tag}-unauthenticated`, phone: nextPhone() }),
+        request(app.getHttpServer()).patch('/api/suppliers/1').send({ isActive: false }),
+      ];
+
+      for (const pending of requests) {
+        const res = await pending;
+        expect(res.status).toBe(401);
+      }
     });
   });
 
