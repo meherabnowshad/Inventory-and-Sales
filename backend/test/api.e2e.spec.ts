@@ -762,9 +762,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
         .set('Authorization', `Bearer ${token}`)
         .send({ name: `${tag}-invalid-phone`, phone: '+8801712345678' });
       expect(invalidPhone.status).toBe(400);
-      expect(invalidPhone.body.message).toContain(
-        'Phone must be 11 digits and start with 01',
-      );
+      expect(invalidPhone.body.message).toContain('Phone must be 11 digits and start with 01');
 
       const created = await request(app.getHttpServer())
         .post('/api/suppliers')
@@ -978,4 +976,3 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
   });
 });
-
