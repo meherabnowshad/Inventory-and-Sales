@@ -301,6 +301,94 @@ describe('SuppliersService', () => {
     );
   });
 
+  it('searches supplier names and phones with case-insensitive partial matching', async () => {
+    await service.findAll({ q: '  Acme  ' } as never);
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { name: { contains: 'Acme', mode: 'insensitive' } },
+            { phone: { contains: 'Acme', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+
+    await service.findAll({ q: '4567' } as never);
+    expect(prisma.supplier.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { name: { contains: '4567', mode: 'insensitive' } },
+            { phone: { contains: '4567', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('returns an empty result when the search has no matches', async () => {
+    prisma.supplier.findMany.mockResolvedValue([]);
+    prisma.supplier.count.mockResolvedValue(0);
+
+    await expect(service.findAll({ q: 'unknown supplier' } as never)).resolves.toEqual({
+      items: [],
+      page: 1,
+      size: 20,
+      total: 0,
+    });
+  });
+
+  it('combines search, active status, paging, and stable sorting', async () => {
+    await service.findAll({ q: '0171', status: 'active', page: 3, size: 5 } as never);
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          isActive: true,
+          OR: [
+            { name: { contains: '0171', mode: 'insensitive' } },
+            { phone: { contains: '0171', mode: 'insensitive' } },
+          ],
+        },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: 10,
+        take: 5,
+      }),
+    );
+    expect(prisma.supplier.count).toHaveBeenCalledWith({
+      where: {
+        isActive: true,
+        OR: [
+          { name: { contains: '0171', mode: 'insensitive' } },
+          { phone: { contains: '0171', mode: 'insensitive' } },
+        ],
+      },
+    });
+  });
+
+  it('treats percent and underscore in search terms literally', async () => {
+    await service.findAll({ q: '%_' } as never);
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { name: { contains: '\\%\\_', mode: 'insensitive' } },
+            { phone: { contains: '\\%\\_', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('omits search when q is empty after trimming', async () => {
+    await service.findAll({ q: '   ' } as never);
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+  });
+
   it('returns 404 when a supplier does not exist', async () => {
     prisma.supplier.findUnique.mockResolvedValue(null);
     await expect(service.findOne(Number(supplierId))).rejects.toThrow(

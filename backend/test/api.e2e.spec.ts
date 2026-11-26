@@ -13,6 +13,12 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
   let authToken: string;
   let refreshToken: string;
   let roleTokens: Record<UserRole, string>;
+  const getRoleToken = (role: UserRole, token = roleTokens[role]): string => {
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new Error(`No access token found for role "${role}"`);
+    }
+    return token;
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -390,7 +396,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
 
     it('rafi and mitu get 403 on every users route', async () => {
       for (const role of [UserRole.SalesStaff, UserRole.StoreStaff]) {
-        const token = roleTokens[role];
+        const token = getRoleToken(role);
         const requests = [
           request(app.getHttpServer()).get('/api/users').set('Authorization', `Bearer ${token}`),
           request(app.getHttpServer()).get('/api/users/1').set('Authorization', `Bearer ${token}`),
@@ -636,7 +642,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       async (role) => {
         const phone = nextPhone();
         const name = `${tag}-${role}-${phone}`;
-        const token = roleTokens[role];
+        const token = getRoleToken(role);
         const createRes = await request(app.getHttpServer())
           .post('/api/suppliers')
           .set('Authorization', `Bearer ${token}`)
@@ -692,8 +698,65 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       },
     );
 
+    it('searches suppliers by partial name and phone and restricts search to Store Staff', async () => {
+      const salesStaffLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
+      const salesStaffToken = getRoleToken(
+        UserRole.SalesStaff,
+        salesStaffLogin.body.accessToken || salesStaffLogin.body.token,
+      );
+      const storeToken = getRoleToken(UserRole.StoreStaff);
+      const firstPhone = nextPhone();
+      const secondPhone = nextPhone();
+      const namePart = `${tag}-search-name`;
+      const suppliers = [
+        { name: `${namePart}-first`, phone: firstPhone },
+        { name: `${tag}-phone-search-second`, phone: secondPhone },
+      ];
+
+      for (const supplier of suppliers) {
+        const created = await request(app.getHttpServer())
+          .post('/api/suppliers')
+          .set('Authorization', `Bearer ${storeToken}`)
+          .send(supplier);
+        expect(created.status).toBe(201);
+      }
+
+      const byName = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: namePart })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(byName.status).toBe(200);
+      expect(byName.body).toMatchObject({
+        items: expect.arrayContaining([expect.objectContaining({ name: suppliers[0].name })]),
+      });
+
+      const byPhone = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: secondPhone.slice(2, 8) })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(byPhone.status).toBe(200);
+      expect(byPhone.body.items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ phone: secondPhone })]),
+      );
+
+      const unknown = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: `${tag}-unknown-search-term` })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(unknown.status).toBe(200);
+      expect(unknown.body).toMatchObject({ items: [], total: 0 });
+
+      const salesStaff = await request(app.getHttpServer())
+        .get('/api/suppliers')
+        .query({ q: namePart })
+        .set('Authorization', `Bearer ${salesStaffToken}`);
+      expect(salesStaff.status).toBe(403);
+    });
+
     it('validates phone and email and stores a blank email as null', async () => {
-      const token = roleTokens[UserRole.Administrator];
+      const token = getRoleToken(UserRole.Administrator);
       const invalidPhone = await request(app.getHttpServer())
         .post('/api/suppliers')
         .set('Authorization', `Bearer ${token}`)
@@ -728,7 +791,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
 
     it('warns about duplicate names and permits confirmed duplicates', async () => {
-      const token = roleTokens[UserRole.Administrator];
+      const token = getRoleToken(UserRole.Administrator);
       const name = `${tag}-duplicate`;
       const existing = await request(app.getHttpServer())
         .post('/api/suppliers')
@@ -756,7 +819,7 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
     });
 
     it('warns on updates to existing or inactive supplier names, but not its own name', async () => {
-      const token = roleTokens[UserRole.Administrator];
+      const token = getRoleToken(UserRole.Administrator);
       const existingName = `${tag}-existing`;
       const targetName = `${tag}-target`;
       const inactiveName = `${tag}-inactive`;
@@ -829,7 +892,10 @@ describe('API Integration Tests against Test Database (IMS-51.2 | NFR-OPS-01)', 
       const loginRes = await request(app.getHttpServer())
         .post('/api/auth/login')
         .send({ usernameOrEmail: 'rafi', password: 'Smart@1234' });
-      const token = loginRes.body.accessToken || loginRes.body.token;
+      const token = getRoleToken(
+        UserRole.SalesStaff,
+        loginRes.body.accessToken || loginRes.body.token,
+      );
       const requests = [
         {
           method: 'GET',

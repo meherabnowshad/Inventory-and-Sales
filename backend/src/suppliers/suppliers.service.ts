@@ -128,12 +128,23 @@ export class SuppliersService {
   async findAll(query: ListSuppliersQueryDto) {
     const page = query.page ?? 1;
     const size = query.size ?? 20;
-    const where: Prisma.SupplierWhereInput =
-      query.status === 'active'
+    const q = query.q?.trim();
+    const searchTerm = q?.replace(/[\\%_]/g, (character) => `\\${character}`);
+    const where: Prisma.SupplierWhereInput = {
+      ...(query.status === 'active'
         ? { isActive: true }
         : query.status === 'inactive'
           ? { isActive: false }
-          : {};
+          : {}),
+      ...(searchTerm
+        ? {
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' as const } },
+              { phone: { contains: searchTerm, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.supplier.findMany({

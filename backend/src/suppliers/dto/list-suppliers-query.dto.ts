@@ -1,7 +1,13 @@
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class ListSuppliersQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  q?: string;
+
   @IsOptional()
   @IsIn(['active', 'inactive', 'all'])
   status: 'active' | 'inactive' | 'all' = 'all';
