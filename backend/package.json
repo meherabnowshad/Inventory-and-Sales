@@ -20,7 +20,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:migrate": "prisma migrate deploy",
-    "migrate": "node -e \"if (process.env.DATABASE_URL) { require('child_process').execSync('npx prisma migrate deploy', { stdio: 'inherit' }); } else { console.log('Skipping migrate: DATABASE_URL not set'); }\"",
+    "migrate": "node -e \"const url = process.env.DIRECT_URL || process.env.DATABASE_URL; if (url) { require('child_process').execSync('npx prisma migrate deploy', { stdio: 'inherit', env: { ...process.env, DATABASE_URL: url } }); } else { console.log('Skipping migrate: DATABASE_URL not set'); }\"",
+    "seed": "prisma db seed",
     "db:seed": "prisma db seed",
     "db:setup": "prisma migrate deploy && prisma db seed",
     "db:down": "node scripts/db-down.js"
