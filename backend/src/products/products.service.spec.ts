@@ -17,7 +17,12 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
     };
     category: { findUnique: ReturnType<typeof vi.fn> };
     stockMovement: { count: ReturnType<typeof vi.fn> };
+    auditLog: { create: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
+    $queryRaw: ReturnType<typeof vi.fn>;
   };
+
+  const ACTOR = 7n; // the logged-in user who edits
 
   const row = (overrides: Partial<Product> = {}): Product => ({
     id: 41n,
@@ -89,6 +94,10 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       },
       category: { findUnique: vi.fn().mockResolvedValue({ id: 1, isActive: true }) },
       stockMovement: { count: vi.fn().mockResolvedValue(0) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      // the fake transaction runs the callback with the same fake client
+      $transaction: vi.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma)),
+      $queryRaw: vi.fn().mockResolvedValue([]), // the row lock (SELECT ... FOR UPDATE)
     };
     service = new ProductsService(prisma as unknown as PrismaService);
   });
@@ -199,12 +208,14 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
     it('answers 404 when the product does not exist, and changes nothing', async () => {
       prisma.product.findUnique.mockResolvedValue(null);
 
-      await expect(service.update(999, { name: 'x' })).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.update(999, { name: 'x' }, ACTOR)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
       expect(prisma.product.update).not.toHaveBeenCalled();
     });
 
     it('sends only the fields that were given; prices go as 2-decimal strings', async () => {
-      await service.update(41, { sellingPrice: 990 });
+      await service.update(41, { sellingPrice: 990 }, ACTOR);
 
       expect(prisma.product.update).toHaveBeenCalledWith({
         where: { id: 41n },
@@ -224,7 +235,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       it('rejects a SKU change with 422 SKU_LOCKED once the product has a stock movement', async () => {
         prisma.stockMovement.count.mockResolvedValue(3);
 
-        const err = await rejection(service.update(41, { sku: 'KB-K121' }));
+        const err = await rejection(service.update(41, { sku: 'KB-K121' }, ACTOR));
         expect(err).toBeInstanceOf(UnprocessableEntityException);
         expect(err.getResponse!()).toMatchObject({ code: 'SKU_LOCKED' });
         expect(prisma.stockMovement.count).toHaveBeenCalledWith({ where: { productId: 41n } });
@@ -234,20 +245,20 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       it('also locks a change of letter case only, as the database trigger does', async () => {
         prisma.stockMovement.count.mockResolvedValue(1);
 
-        const err = await rejection(service.update(41, { sku: 'kb-k120' }));
+        const err = await rejection(service.update(41, { sku: 'kb-k120' }, ACTOR));
         expect(err.getResponse!()).toMatchObject({ code: 'SKU_LOCKED' });
       });
 
       it('allows a SKU change while the product has no stock movement', async () => {
         prisma.stockMovement.count.mockResolvedValue(0);
 
-        await service.update(41, { sku: 'KB-K121' });
+        await service.update(41, { sku: 'KB-K121' }, ACTOR);
         expect(prisma.product.update).toHaveBeenCalled();
       });
 
       it('does not even look at movements when the SKU is not changed', async () => {
-        await service.update(41, { sku: 'KB-K120', name: 'Renamed' });
-        await service.update(41, { name: 'Renamed' });
+        await service.update(41, { sku: 'KB-K120', name: 'Renamed' }, ACTOR);
+        await service.update(41, { name: 'Renamed' }, ACTOR);
 
         expect(prisma.stockMovement.count).not.toHaveBeenCalled();
         expect(prisma.product.update).toHaveBeenCalledTimes(2);
@@ -258,7 +269,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
           new Error('SKU is locked after the first stock movement (BR-12)'),
         );
 
-        const err = await rejection(service.update(41, { sku: 'KB-K121' }));
+        const err = await rejection(service.update(41, { sku: 'KB-K121' }, ACTOR));
         expect(err).toBeInstanceOf(UnprocessableEntityException);
         expect(err.getResponse!()).toMatchObject({ code: 'SKU_LOCKED' });
       });
@@ -267,27 +278,29 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
     it('turns a unique violation (P2002) into 409 SKU_TAKEN', async () => {
       prisma.product.update.mockRejectedValue(prismaError('P2002'));
 
-      const err = await rejection(service.update(41, { sku: 'KB-K121' }));
+      const err = await rejection(service.update(41, { sku: 'KB-K121' }, ACTOR));
       expect(err).toBeInstanceOf(ConflictException);
       expect(err.getResponse!()).toMatchObject({ code: 'SKU_TAKEN' });
     });
 
     it('answers 404, not 500, when the row is deleted between the lookup and the update (P2025)', async () => {
       prisma.product.update.mockRejectedValue(prismaError('P2025'));
-      await expect(service.update(41, { name: 'x' })).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.update(41, { name: 'x' }, ACTOR)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('lets any other database error pass', async () => {
       const failure = new Error('connection lost');
       prisma.product.update.mockRejectedValue(failure);
-      await expect(service.update(41, { name: 'x' })).rejects.toBe(failure);
+      await expect(service.update(41, { name: 'x' }, ACTOR)).rejects.toBe(failure);
     });
 
     describe('category (BR-11)', () => {
       it('checks the new category when it changes: inactive gives 422 CATEGORY_INACTIVE', async () => {
         prisma.category.findUnique.mockResolvedValue({ id: 2, isActive: false });
 
-        const err = await rejection(service.update(41, { categoryId: 2 }));
+        const err = await rejection(service.update(41, { categoryId: 2 }, ACTOR));
         expect(err.getResponse!()).toMatchObject({ code: 'CATEGORY_INACTIVE' });
         expect(prisma.product.update).not.toHaveBeenCalled();
       });
@@ -295,7 +308,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       it('does not check the category when it is unchanged: a product keeps an inactive category', async () => {
         prisma.category.findUnique.mockResolvedValue({ id: 1, isActive: false });
 
-        await service.update(41, { categoryId: 1, name: 'Renamed' });
+        await service.update(41, { categoryId: 1, name: 'Renamed' }, ACTOR);
         expect(prisma.category.findUnique).not.toHaveBeenCalled();
         expect(prisma.product.update).toHaveBeenCalled();
       });
@@ -303,26 +316,118 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
 
     describe('price warning (FR-PRD-03)', () => {
       it('warns when the new selling price is below the stored purchase price', async () => {
-        const res = await service.update(41, { sellingPrice: 600 }); // stored purchase price is 700
+        const res = await service.update(41, { sellingPrice: 600 }, ACTOR); // stored purchase price is 700
         expect(res!.warnings).toHaveLength(1);
         expect(res!.warnings[0].code).toBe('SELLING_BELOW_PURCHASE');
       });
 
       it('warns when the new purchase price rises above the stored selling price', async () => {
-        const res = await service.update(41, { purchasePrice: 1000 }); // stored selling price is 950
+        const res = await service.update(41, { purchasePrice: 1000 }, ACTOR); // stored selling price is 950
         expect(res!.warnings).toHaveLength(1);
       });
 
       it('gives no warning when the prices are fine', async () => {
-        const res = await service.update(41, { sellingPrice: 990 });
+        const res = await service.update(41, { sellingPrice: 990 }, ACTOR);
         expect(res!.warnings).toEqual([]);
+      });
+    });
+
+    describe('price change audit (FR-AUD-01, IMS-10.1)', () => {
+      it('writes one PRICE_CHANGE row with user, entity and both prices before and after', async () => {
+        await service.update(41, { sellingPrice: 990 }, ACTOR); // stored: purchase 700.00, selling 950.00
+
+        expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+        expect(prisma.auditLog.create).toHaveBeenCalledWith({
+          data: {
+            entity: 'products',
+            entityId: 41n,
+            action: 'PRICE_CHANGE',
+            userId: ACTOR,
+            beforeJson: { purchase_price: '700.00', selling_price: '950.00' },
+            afterJson: { purchase_price: '700.00', selling_price: '990.00' },
+          },
+        });
+      });
+
+      it('writes one row when the purchase price changes', async () => {
+        await service.update(41, { purchasePrice: 650 }, ACTOR);
+        expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('writes one row, not two, when both prices change together', async () => {
+        await service.update(41, { purchasePrice: 650, sellingPrice: 990 }, ACTOR);
+        expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('writes no row when only other fields change', async () => {
+        await service.update(41, { name: 'Renamed', minStock: 3 }, ACTOR);
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      });
+
+      it('writes no row when the same price is sent again (950 and 950.00 are equal)', async () => {
+        await service.update(41, { sellingPrice: 950, purchasePrice: 700 }, ACTOR);
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      });
+
+      it('writes no row for deactivate or reactivate', async () => {
+        await service.update(41, { isActive: false }, ACTOR);
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      });
+
+      it('runs the update and the audit insert inside one transaction', async () => {
+        await service.update(41, { sellingPrice: 990 }, ACTOR);
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      });
+
+      it('locks the row and takes "before" from the read inside the transaction, not the first read', async () => {
+        // first read (outside): 950.00; by the time the lock is held another edit has made it 990.00
+        prisma.product.findUnique
+          .mockResolvedValueOnce(row())
+          .mockResolvedValueOnce(row({ sellingPrice: new Prisma.Decimal('990.00') }));
+
+        await service.update(41, { sellingPrice: 1000 }, ACTOR);
+
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+        expect(prisma.auditLog.create.mock.calls[0][0].data.beforeJson).toEqual({
+          purchase_price: '700.00',
+          selling_price: '990.00',
+        });
+      });
+
+      it('writes no row when another edit already set the same price before the lock was held', async () => {
+        prisma.product.findUnique
+          .mockResolvedValueOnce(row()) // 950.00 outside
+          .mockResolvedValueOnce(row({ sellingPrice: new Prisma.Decimal('990.00') })); // 990.00 inside
+
+        await service.update(41, { sellingPrice: 990 }, ACTOR);
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      });
+
+      it('answers 404 when the product is gone by the time the lock is held', async () => {
+        prisma.product.findUnique.mockResolvedValueOnce(row()).mockResolvedValueOnce(null);
+        await expect(service.update(41, { sellingPrice: 990 }, ACTOR)).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        expect(prisma.product.update).not.toHaveBeenCalled();
+      });
+
+      it('fails the whole update when the audit insert fails (the real transaction then rolls back)', async () => {
+        const failure = new Error('audit insert failed');
+        prisma.auditLog.create.mockRejectedValue(failure);
+        await expect(service.update(41, { sellingPrice: 990 }, ACTOR)).rejects.toBe(failure);
+      });
+
+      it('does not write a row when the update itself is refused (422 SKU_LOCKED)', async () => {
+        prisma.stockMovement.count.mockResolvedValue(2);
+        await rejection(service.update(41, { sku: 'KB-K121', sellingPrice: 990 }, ACTOR));
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
       });
     });
 
     describe('deactivate and reactivate (FR-PRD-05, BR-14)', () => {
       it('passes isActive=false through, also for a product that has stock and history', async () => {
         prisma.stockMovement.count.mockResolvedValue(5); // history exists
-        const res = await service.update(41, { isActive: false });
+        const res = await service.update(41, { isActive: false }, ACTOR);
 
         expect(prisma.product.update.mock.calls[0][0].data.isActive).toBe(false);
         expect(res!.isActive).toBe(false);
@@ -331,7 +436,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
 
       it('passes isActive=true through to reactivate', async () => {
         prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
-        const res = await service.update(41, { isActive: true });
+        const res = await service.update(41, { isActive: true }, ACTOR);
 
         expect(prisma.product.update.mock.calls[0][0].data.isActive).toBe(true);
         expect(res!.isActive).toBe(true);
@@ -341,7 +446,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
         prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
         prisma.category.findUnique.mockResolvedValue({ id: 1, isActive: false });
 
-        const err = await rejection(service.update(41, { isActive: true }));
+        const err = await rejection(service.update(41, { isActive: true }, ACTOR));
         expect(err.getResponse!()).toMatchObject({ code: 'CATEGORY_INACTIVE' });
         expect(prisma.product.update).not.toHaveBeenCalled();
       });
@@ -350,7 +455,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
         prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
         prisma.category.findUnique.mockResolvedValue({ id: 2, isActive: true });
 
-        await service.update(41, { isActive: true, categoryId: 2 });
+        await service.update(41, { isActive: true, categoryId: 2 }, ACTOR);
         expect(prisma.category.findUnique).toHaveBeenCalledWith({ where: { id: 2 } });
         expect(prisma.product.update).toHaveBeenCalled();
       });
@@ -358,7 +463,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       it('lets an inactive product be edited, even when its category is inactive', async () => {
         prisma.category.findUnique.mockResolvedValue({ id: 1, isActive: false });
         prisma.product.findUnique.mockResolvedValue(row({ isActive: false }));
-        await expect(service.update(41, { name: 'Renamed' })).resolves.toBeDefined();
+        await expect(service.update(41, { name: 'Renamed' }, ACTOR)).resolves.toBeDefined();
       });
 
       it('has no way to delete a product: the service offers no remove method (BR-14)', () => {

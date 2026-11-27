@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, Product } from '@prisma/client';
+import { writeAudit } from '../audit/write-audit';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -112,7 +113,8 @@ export class ProductsService {
   //   their own unit_cost / unit_price, so old documents never change
   // - FR-PRD-05: isActive=false deactivates. There is no DELETE (BR-14); inactive products are
   //   refused in new invoices and orders by those modules (BR-11), not here
-  async update(id: number, dto: UpdateProductDto) {
+  // changedBy = id of the logged-in user, passed in by ProductsController (written to the audit row)
+  async update(id: number, dto: UpdateProductDto, changedBy: bigint) {
     const existing = await this.prisma.product.findUnique({ where: { id: BigInt(id) } });
     if (!existing) {
       throw new NotFoundException(`Product ${id} not found`);
@@ -134,18 +136,56 @@ export class ProductsService {
       await this.assertCategoryUsable(dto.categoryId ?? existing.categoryId);
     }
 
+    const newPurchase = dto.purchasePrice?.toFixed(2);
+    const newSelling = dto.sellingPrice?.toFixed(2);
+
     try {
-      const product = await this.prisma.product.update({
-        where: { id: existing.id },
-        data: {
-          sku: dto.sku,
-          name: dto.name,
-          categoryId: dto.categoryId,
-          purchasePrice: dto.purchasePrice?.toFixed(2),
-          sellingPrice: dto.sellingPrice?.toFixed(2),
-          minStock: dto.minStock,
-          isActive: dto.isActive,
-        },
+      // One transaction: if the audit insert fails, the price update is rolled back too
+      const product = await this.prisma.$transaction(async (tx) => {
+        // Lock the row, then read the prices again inside the transaction. A second edit of the same
+        // product waits here until the first one commits, so "before" is always the real previous
+        // price and no change is missed
+        await tx.$queryRaw`SELECT id FROM products WHERE id = ${existing.id} FOR UPDATE`;
+        const current = await tx.product.findUnique({ where: { id: existing.id } });
+        if (!current) {
+          throw new NotFoundException(`Product ${id} not found`);
+        }
+
+        // FR-AUD-01 (IMS-10.1): only a real price change is audited. Editing other fields, or
+        // sending the same price again, writes no row
+        const priceChanged =
+          (newPurchase !== undefined && newPurchase !== current.purchasePrice.toFixed(2)) ||
+          (newSelling !== undefined && newSelling !== current.sellingPrice.toFixed(2));
+
+        const updated = await tx.product.update({
+          where: { id: existing.id },
+          data: {
+            sku: dto.sku,
+            name: dto.name,
+            categoryId: dto.categoryId,
+            purchasePrice: newPurchase,
+            sellingPrice: newSelling,
+            minStock: dto.minStock,
+            isActive: dto.isActive,
+          },
+        });
+        if (priceChanged) {
+          await writeAudit(tx, {
+            entity: 'products',
+            entityId: existing.id,
+            action: 'PRICE_CHANGE',
+            userId: changedBy,
+            before: {
+              purchase_price: current.purchasePrice.toFixed(2),
+              selling_price: current.sellingPrice.toFixed(2),
+            },
+            after: {
+              purchase_price: updated.purchasePrice.toFixed(2),
+              selling_price: updated.sellingPrice.toFixed(2),
+            },
+          });
+        }
+        return updated;
       });
       return this.toResponse(product);
     } catch (e) {
