@@ -209,9 +209,7 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
       expect(rotated.token).not.toBe(session.refreshToken);
 
       // Replaying old refresh token is rejected
-      const replayRes = await http()
-        .post('/api/auth/refresh')
-        .set('Cookie', session.refreshCookie);
+      const replayRes = await http().post('/api/auth/refresh').set('Cookie', session.refreshCookie);
       expect(replayRes.status).toBe(401);
       expect(replayRes.body.message).toBe('Refresh token has already been revoked');
 
@@ -459,7 +457,11 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
       { method: 'get', path: () => `/api/users/${roleUsers[UserRole.Administrator].id}` },
       { method: 'get', path: () => `/api/users/${roleUsers[UserRole.Administrator].id}/audit` },
       { method: 'post', path: () => '/api/users', body: {} },
-      { method: 'patch', path: () => `/api/users/${roleUsers[UserRole.Administrator].id}`, body: {} },
+      {
+        method: 'patch',
+        path: () => `/api/users/${roleUsers[UserRole.Administrator].id}`,
+        body: {},
+      },
     ];
 
     it('allows public /api/health without a token and with an expired token', async () => {
