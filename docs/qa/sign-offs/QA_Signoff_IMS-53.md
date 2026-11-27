@@ -3,7 +3,7 @@
 **Task**: [IMS-53] Automate authentication and role-based API regression  
 **Requirements**: FR-AUTH-01, FR-AUTH-02, FR-AUTH-03, FR-USR-04, NFR-SEC-01  
 **Author / Seat**: QA 1 · Meherab Hossain Nowshad  
-**Reviewed by**: QA 2 · Md Rashadul Islam _(Pending)_  
+**Reviewed by**: QA 2 · Md Rashadul Islam _(Approved · 2026-11-27)_  
 **Branch**: `fix/IMS-53-review-fixes`  
 **Test Date**: 2026-11-27  
 **Environment**: Local PostgreSQL (`inventory_sales_db`) & GitHub Actions CI (`api-tests` job against PostgreSQL 16) · Vitest 2.1.9 + supertest  
