@@ -48,6 +48,13 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
 
   const http = () => request(app.getHttpServer());
 
+  const trackUnexpectedCreate = (path: string, res: { status: number; body?: { id?: number } }) => {
+    if (res.status !== 201 || res.body?.id === undefined) return;
+    if (path === '/api/categories') createdCategoryIds.push(res.body.id);
+    if (path === '/api/products') createdProductIds.push(res.body.id);
+    if (path === '/api/users') createdUserIds.push(BigInt(res.body.id));
+  };
+
   const extractRefreshCookie = (res: {
     headers: Record<string, string | string[] | undefined>;
   }) => {
@@ -236,40 +243,76 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
   describe('2. Role-Based Access Control across Every Protected Endpoint Group', () => {
     it.each([
       // Public & Shared Authenticated Read Routes
-      [UserRole.Administrator, 'get', () => '/api/health', 200],
-      [UserRole.SalesStaff, 'get', () => '/api/health', 200],
-      [UserRole.StoreStaff, 'get', () => '/api/health', 200],
+      [UserRole.Administrator, 'get', '/api/health', 200, () => '/api/health'],
+      [UserRole.SalesStaff, 'get', '/api/health', 200, () => '/api/health'],
+      [UserRole.StoreStaff, 'get', '/api/health', 200, () => '/api/health'],
 
-      [UserRole.Administrator, 'get', () => '/api/auth/me', 200],
-      [UserRole.SalesStaff, 'get', () => '/api/auth/me', 200],
-      [UserRole.StoreStaff, 'get', () => '/api/auth/me', 200],
+      [UserRole.Administrator, 'get', '/api/auth/me', 200, () => '/api/auth/me'],
+      [UserRole.SalesStaff, 'get', '/api/auth/me', 200, () => '/api/auth/me'],
+      [UserRole.StoreStaff, 'get', '/api/auth/me', 200, () => '/api/auth/me'],
 
-      [UserRole.Administrator, 'get', () => '/api/inventory', 200],
-      [UserRole.SalesStaff, 'get', () => '/api/inventory', 200],
-      [UserRole.StoreStaff, 'get', () => '/api/inventory', 200],
+      [UserRole.Administrator, 'get', '/api/inventory', 200, () => '/api/inventory'],
+      [UserRole.SalesStaff, 'get', '/api/inventory', 200, () => '/api/inventory'],
+      [UserRole.StoreStaff, 'get', '/api/inventory', 200, () => '/api/inventory'],
 
-      [UserRole.Administrator, 'get', () => '/api/categories', 200],
-      [UserRole.SalesStaff, 'get', () => '/api/categories', 200],
-      [UserRole.StoreStaff, 'get', () => '/api/categories', 200],
+      [UserRole.Administrator, 'get', '/api/categories', 200, () => '/api/categories'],
+      [UserRole.SalesStaff, 'get', '/api/categories', 200, () => '/api/categories'],
+      [UserRole.StoreStaff, 'get', '/api/categories', 200, () => '/api/categories'],
 
-      [UserRole.Administrator, 'get', () => `/api/categories/${dedicatedCategoryId}`, 200],
-      [UserRole.SalesStaff, 'get', () => `/api/categories/${dedicatedCategoryId}`, 200],
-      [UserRole.StoreStaff, 'get', () => `/api/categories/${dedicatedCategoryId}`, 200],
+      [
+        UserRole.Administrator,
+        'get',
+        '/api/categories/:id',
+        200,
+        () => `/api/categories/${dedicatedCategoryId}`,
+      ],
+      [
+        UserRole.SalesStaff,
+        'get',
+        '/api/categories/:id',
+        200,
+        () => `/api/categories/${dedicatedCategoryId}`,
+      ],
+      [
+        UserRole.StoreStaff,
+        'get',
+        '/api/categories/:id',
+        200,
+        () => `/api/categories/${dedicatedCategoryId}`,
+      ],
 
-      [UserRole.Administrator, 'get', () => `/api/products/${dedicatedProductId}`, 200],
-      [UserRole.SalesStaff, 'get', () => `/api/products/${dedicatedProductId}`, 200],
-      [UserRole.StoreStaff, 'get', () => `/api/products/${dedicatedProductId}`, 200],
+      [
+        UserRole.Administrator,
+        'get',
+        '/api/products/:id',
+        200,
+        () => `/api/products/${dedicatedProductId}`,
+      ],
+      [
+        UserRole.SalesStaff,
+        'get',
+        '/api/products/:id',
+        200,
+        () => `/api/products/${dedicatedProductId}`,
+      ],
+      [
+        UserRole.StoreStaff,
+        'get',
+        '/api/products/:id',
+        200,
+        () => `/api/products/${dedicatedProductId}`,
+      ],
 
       // Sales Endpoint Group (Admin + Sales Staff only)
-      [UserRole.Administrator, 'get', () => '/api/sales', 200],
-      [UserRole.SalesStaff, 'get', () => '/api/sales', 200],
-      [UserRole.StoreStaff, 'get', () => '/api/sales', 403],
+      [UserRole.Administrator, 'get', '/api/sales', 200, () => '/api/sales'],
+      [UserRole.SalesStaff, 'get', '/api/sales', 200, () => '/api/sales'],
+      [UserRole.StoreStaff, 'get', '/api/sales', 403, () => '/api/sales'],
 
       // Users Endpoint Group (Admin only)
-      [UserRole.Administrator, 'get', () => '/api/users', 200],
-      [UserRole.SalesStaff, 'get', () => '/api/users', 403],
-      [UserRole.StoreStaff, 'get', () => '/api/users', 403],
-    ] as const)('%s %s -> %i', async (role, method, buildPath, expectedStatus) => {
+      [UserRole.Administrator, 'get', '/api/users', 200, () => '/api/users'],
+      [UserRole.SalesStaff, 'get', '/api/users', 403, () => '/api/users'],
+      [UserRole.StoreStaff, 'get', '/api/users', 403, () => '/api/users'],
+    ] as const)('%s %s %s -> %i', async (role, method, _label, expectedStatus, buildPath) => {
       const res = await http()
         [method](buildPath())
         .set('Authorization', `Bearer ${roleSessions[role].accessToken}`);
@@ -337,20 +380,30 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
       // Sales Staff cannot POST, PATCH, or DELETE categories
       const salesToken = roleSessions[UserRole.SalesStaff].accessToken;
       const salesCalls = [
-        http()
-          .post('/api/categories')
-          .set('Authorization', `Bearer ${salesToken}`)
-          .send({ name: `Forbidden_${RUN}` }),
-        http()
-          .patch(`/api/categories/${dedicatedCategoryId}`)
-          .set('Authorization', `Bearer ${salesToken}`)
-          .send({ name: `ForbiddenPatch_${RUN}` }),
-        http()
-          .delete(`/api/categories/${dedicatedCategoryId}`)
-          .set('Authorization', `Bearer ${salesToken}`),
+        {
+          path: '/api/categories',
+          pending: http()
+            .post('/api/categories')
+            .set('Authorization', `Bearer ${salesToken}`)
+            .send({ name: `Forbidden_${RUN}` }),
+        },
+        {
+          path: `/api/categories/${dedicatedCategoryId}`,
+          pending: http()
+            .patch(`/api/categories/${dedicatedCategoryId}`)
+            .set('Authorization', `Bearer ${salesToken}`)
+            .send({ name: `ForbiddenPatch_${RUN}` }),
+        },
+        {
+          path: `/api/categories/${dedicatedCategoryId}`,
+          pending: http()
+            .delete(`/api/categories/${dedicatedCategoryId}`)
+            .set('Authorization', `Bearer ${salesToken}`),
+        },
       ];
       for (const call of salesCalls) {
-        const res = await call;
+        const res = await call.pending;
+        trackUnexpectedCreate(call.path, res);
         expect(res.status).toBe(403);
         expect(res.body.code).toBe('FORBIDDEN_ROLE');
       }
@@ -383,24 +436,31 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
       // Sales Staff cannot POST or PATCH products
       const salesToken = roleSessions[UserRole.SalesStaff].accessToken;
       const salesCalls = [
-        http()
-          .post('/api/products')
-          .set('Authorization', `Bearer ${salesToken}`)
-          .send({
-            sku: `FORBIDDEN-${RUN}`,
-            name: 'Forbidden Product',
-            categoryId: dedicatedCategoryId,
-            purchasePrice: 10,
-            sellingPrice: 20,
-            minStock: 1,
-          }),
-        http()
-          .patch(`/api/products/${dedicatedProductId}`)
-          .set('Authorization', `Bearer ${salesToken}`)
-          .send({ name: 'Forbidden Update' }),
+        {
+          path: '/api/products',
+          pending: http()
+            .post('/api/products')
+            .set('Authorization', `Bearer ${salesToken}`)
+            .send({
+              sku: `FORBIDDEN-${RUN}`,
+              name: 'Forbidden Product',
+              categoryId: dedicatedCategoryId,
+              purchasePrice: 10,
+              sellingPrice: 20,
+              minStock: 1,
+            }),
+        },
+        {
+          path: `/api/products/${dedicatedProductId}`,
+          pending: http()
+            .patch(`/api/products/${dedicatedProductId}`)
+            .set('Authorization', `Bearer ${salesToken}`)
+            .send({ name: 'Forbidden Update' }),
+        },
       ];
       for (const call of salesCalls) {
-        const res = await call;
+        const res = await call.pending;
+        trackUnexpectedCreate(call.path, res);
         expect(res.status).toBe(403);
         expect(res.body.code).toBe('FORBIDDEN_ROLE');
       }
@@ -480,8 +540,10 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
 
     it('rejects requests without a Bearer token with 401 on every protected endpoint group', async () => {
       for (const endpoint of protectedEndpoints) {
-        const req = http()[endpoint.method](endpoint.path());
+        const path = endpoint.path();
+        const req = http()[endpoint.method](path);
         const res = endpoint.body ? await req.send(endpoint.body) : await req;
+        trackUnexpectedCreate(path, res);
         expect(res.status).toBe(401);
         expect(res.body.message).toBe('Authorization header is missing');
       }
@@ -492,10 +554,10 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
       const expiredToken = authService.signAccessToken(adminSession.user, -60);
 
       for (const endpoint of protectedEndpoints) {
-        const req = http()
-          [endpoint.method](endpoint.path())
-          .set('Authorization', `Bearer ${expiredToken}`);
+        const path = endpoint.path();
+        const req = http()[endpoint.method](path).set('Authorization', `Bearer ${expiredToken}`);
         const res = endpoint.body ? await req.send(endpoint.body) : await req;
+        trackUnexpectedCreate(path, res);
         expect(res.status).toBe(401);
         expect(res.body.message).toBe('Token has expired');
       }
@@ -529,10 +591,12 @@ describe('Auth & Role-Based API Regression (IMS-53 | FR-USR-04, NFR-SEC-01)', ()
 
       // 3. Existing access token rejected across every protected endpoint group
       for (const endpoint of protectedEndpoints) {
+        const path = endpoint.path();
         const req = http()
-          [endpoint.method](endpoint.path())
+          [endpoint.method](path)
           .set('Authorization', `Bearer ${deactSession.accessToken}`);
         const res = endpoint.body ? await req.send(endpoint.body) : await req;
+        trackUnexpectedCreate(path, res);
         expect(res.status).toBe(401);
         expect(res.body.message).toBe('Account is deactivated');
       }
