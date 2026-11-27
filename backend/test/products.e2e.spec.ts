@@ -398,6 +398,29 @@ describe('Products API (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       expect(await auditRows(created.body.id)).toHaveLength(0);
     });
 
+    it('two price changes at the same moment: the audit rows form one chain, every "before" is the real previous price', async () => {
+      // Without a row lock both requests can read 950.00 first and both log it as "before".
+      // Several pairs, because the race is a matter of timing
+      for (let i = 0; i < 8; i++) {
+        const created = await createProduct({ purchasePrice: 700, sellingPrice: 950 });
+        const url = `/api/products/${created.body.id}`;
+
+        const [a, b] = await Promise.all([
+          auth(http().patch(url)).send({ sellingPrice: 990 }),
+          auth(http().patch(url)).send({ sellingPrice: 1000 }),
+        ]);
+        expect([a.status, b.status]).toEqual([200, 200]);
+
+        const rows = await auditRows(created.body.id);
+        expect(rows).toHaveLength(2);
+        const sellingOf = (json: unknown) => (json as { selling_price: string }).selling_price;
+        expect(sellingOf(rows[0].beforeJson)).toBe('950.00');
+        expect(sellingOf(rows[1].beforeJson)).toBe(sellingOf(rows[0].afterJson)); // the chain
+        const stored = await prisma.product.findUnique({ where: { id: BigInt(created.body.id) } });
+        expect(stored!.sellingPrice.toFixed(2)).toBe(sellingOf(rows[1].afterJson));
+      }
+    });
+
     it('records the user who made the change: Store Staff (mitu) is named, not sadia', async () => {
       const mitu = await prisma.user.findFirstOrThrow({ where: { username: 'mitu' } });
       const login = await http()

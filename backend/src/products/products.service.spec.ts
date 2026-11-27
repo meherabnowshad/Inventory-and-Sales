@@ -19,6 +19,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
     stockMovement: { count: ReturnType<typeof vi.fn> };
     auditLog: { create: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
+    $queryRaw: ReturnType<typeof vi.fn>;
   };
 
   const ACTOR = 7n; // the logged-in user who edits
@@ -96,6 +97,7 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       auditLog: { create: vi.fn().mockResolvedValue({}) },
       // the fake transaction runs the callback with the same fake client
       $transaction: vi.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma)),
+      $queryRaw: vi.fn().mockResolvedValue([]), // the row lock (SELECT ... FOR UPDATE)
     };
     service = new ProductsService(prisma as unknown as PrismaService);
   });
@@ -375,6 +377,38 @@ describe('ProductsService (IMS-10 | FR-PRD-01 to FR-PRD-05)', () => {
       it('runs the update and the audit insert inside one transaction', async () => {
         await service.update(41, { sellingPrice: 990 }, ACTOR);
         expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      });
+
+      it('locks the row and takes "before" from the read inside the transaction, not the first read', async () => {
+        // first read (outside): 950.00; by the time the lock is held another edit has made it 990.00
+        prisma.product.findUnique
+          .mockResolvedValueOnce(row())
+          .mockResolvedValueOnce(row({ sellingPrice: new Prisma.Decimal('990.00') }));
+
+        await service.update(41, { sellingPrice: 1000 }, ACTOR);
+
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+        expect(prisma.auditLog.create.mock.calls[0][0].data.beforeJson).toEqual({
+          purchase_price: '700.00',
+          selling_price: '990.00',
+        });
+      });
+
+      it('writes no row when another edit already set the same price before the lock was held', async () => {
+        prisma.product.findUnique
+          .mockResolvedValueOnce(row()) // 950.00 outside
+          .mockResolvedValueOnce(row({ sellingPrice: new Prisma.Decimal('990.00') })); // 990.00 inside
+
+        await service.update(41, { sellingPrice: 990 }, ACTOR);
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      });
+
+      it('answers 404 when the product is gone by the time the lock is held', async () => {
+        prisma.product.findUnique.mockResolvedValueOnce(row()).mockResolvedValueOnce(null);
+        await expect(service.update(41, { sellingPrice: 990 }, ACTOR)).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        expect(prisma.product.update).not.toHaveBeenCalled();
       });
 
       it('fails the whole update when the audit insert fails (the real transaction then rolls back)', async () => {

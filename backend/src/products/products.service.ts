@@ -136,17 +136,27 @@ export class ProductsService {
       await this.assertCategoryUsable(dto.categoryId ?? existing.categoryId);
     }
 
-    // FR-AUD-01 (IMS-10.1): only a real price change is audited. Editing other fields, or sending
-    // the same price again, writes no row
     const newPurchase = dto.purchasePrice?.toFixed(2);
     const newSelling = dto.sellingPrice?.toFixed(2);
-    const priceChanged =
-      (newPurchase !== undefined && newPurchase !== existing.purchasePrice.toFixed(2)) ||
-      (newSelling !== undefined && newSelling !== existing.sellingPrice.toFixed(2));
 
     try {
       // One transaction: if the audit insert fails, the price update is rolled back too
       const product = await this.prisma.$transaction(async (tx) => {
+        // Lock the row, then read the prices again inside the transaction. A second edit of the same
+        // product waits here until the first one commits, so "before" is always the real previous
+        // price and no change is missed
+        await tx.$queryRaw`SELECT id FROM products WHERE id = ${existing.id} FOR UPDATE`;
+        const current = await tx.product.findUnique({ where: { id: existing.id } });
+        if (!current) {
+          throw new NotFoundException(`Product ${id} not found`);
+        }
+
+        // FR-AUD-01 (IMS-10.1): only a real price change is audited. Editing other fields, or
+        // sending the same price again, writes no row
+        const priceChanged =
+          (newPurchase !== undefined && newPurchase !== current.purchasePrice.toFixed(2)) ||
+          (newSelling !== undefined && newSelling !== current.sellingPrice.toFixed(2));
+
         const updated = await tx.product.update({
           where: { id: existing.id },
           data: {
@@ -166,8 +176,8 @@ export class ProductsService {
             action: 'PRICE_CHANGE',
             userId: changedBy,
             before: {
-              purchase_price: existing.purchasePrice.toFixed(2),
-              selling_price: existing.sellingPrice.toFixed(2),
+              purchase_price: current.purchasePrice.toFixed(2),
+              selling_price: current.sellingPrice.toFixed(2),
             },
             after: {
               purchase_price: updated.purchasePrice.toFixed(2),
